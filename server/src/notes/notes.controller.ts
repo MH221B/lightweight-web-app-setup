@@ -3,7 +3,7 @@ import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import type { Controller } from "awilixify";
 import { Effect } from "effect";
-import type { NotesService } from "./notes.service";
+import type { NotesService } from "@server/notes/notes.service";
 
 export const CreateNoteSchema = z.object({
   text: z.string().trim().min(1).max(200),

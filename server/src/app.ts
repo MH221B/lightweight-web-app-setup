@@ -2,11 +2,11 @@ import { Hono } from "hono";
 import { serveStatic } from "@hono/bun";
 import { HTTPException } from "hono/http-exception";
 import { DIContext } from "awilixify";
-import { fileURLToPath } from "node:url";
-import type { AppDatabase } from "./db";
-import { createNotesModule, type NotesModuleDef } from "./notes/notes.module";
+import { join } from "node:path";
+import type { AppDatabase } from "@server/db";
+import { createNotesModule, type NotesModuleDef } from "@server/notes/notes.module";
 
-const clientDist = fileURLToPath(new URL("../../client/dist", import.meta.url));
+const clientDist = join(import.meta.dir, "../../client/dist");
 
 export function createApp(db: AppDatabase, options: { serveClient?: boolean } = {}) {
   const container = DIContext.create(createNotesModule(db));

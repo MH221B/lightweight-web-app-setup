@@ -1,5 +1,5 @@
-import { createApp } from "./app";
-import { createDb, defaultDatabasePath, migrateDb } from "./db";
+import { createApp } from "@server/app";
+import { createDb, defaultDatabasePath, migrateDb } from "@server/db";
 
 const db = createDb();
 migrateDb(db);

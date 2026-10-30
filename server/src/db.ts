@@ -4,7 +4,7 @@ import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { notes } from "./notes/schema";
+import { notes } from "@server/notes/schema";
 
 const schema = { notes };
 

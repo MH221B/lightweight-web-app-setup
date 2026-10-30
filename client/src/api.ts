@@ -1,6 +1,6 @@
 import { hc } from "hono/client";
 import type { InferRequestType, InferResponseType } from "hono/client";
-import type { AppType } from "../../server/src/app";
+import type { AppType } from "@server/app";
 
 export const api = hc<AppType>("/");
 

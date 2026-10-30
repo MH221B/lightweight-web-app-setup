@@ -66,11 +66,13 @@ Server tests use `bun:test` on purpose: they exercise the real Hono app against 
 The client imports the server's `AppType` as a type only:
 
 ```ts
-import type { AppType } from "../../server/src/app";
+import type { AppType } from "@server/app";
 const api = hc<AppType>("/");
 ```
 
 `AppType` is the return type of `createApp` in `server/src/app.ts`, whose chained `new Hono().route(...)` expression carries the route schema, not a side-effect-mutated `Hono` variable. The controller is registered as an Awilixify provider, not in `controllers: []`, because Awilixify's controller lifecycle hides the instance and cannot extend Hono's inferred route type. `createApp` resolves the controller from the Awilixify container and calls `registerRoutes()` once to mount the typed sub-app.
+
+`@client/...` resolves to `client/src/`, and `@server/...` resolves to `server/src/`. The client imports `@server/app` only as a type, so server code stays out of the browser bundle.
 
 To prove the contract, run:
 

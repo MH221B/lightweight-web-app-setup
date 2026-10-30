@@ -1,7 +1,7 @@
 import { createModule, type ModuleDef } from "awilixify";
-import type { AppDatabase } from "../db";
-import { NotesController } from "./notes.controller";
-import { NotesService } from "./notes.service";
+import type { AppDatabase } from "@server/db";
+import { NotesController } from "@server/notes/notes.controller";
+import { NotesService } from "@server/notes/notes.service";
 
 export type NotesModuleDef = ModuleDef<{
   providers: {

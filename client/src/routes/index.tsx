@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import type { FormEvent } from "react";
-import { createNote, fetchNotes } from "../api";
+import { createNote, fetchNotes } from "@client/api";
 
 export const Route = createFileRoute("/")({
   component: NotesPage,

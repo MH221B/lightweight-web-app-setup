@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { createApp } from "../src/app";
-import { createDb, migrateDb, type AppDatabase } from "../src/db";
+import { createApp } from "@server/app";
+import { createDb, migrateDb, type AppDatabase } from "@server/db";
 
 let db: AppDatabase;
 let app: ReturnType<typeof createApp>;

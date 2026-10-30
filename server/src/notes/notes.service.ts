@@ -1,7 +1,7 @@
 import { Data, Effect } from "effect";
 import { desc } from "drizzle-orm";
-import type { AppDatabase } from "../db";
-import { notes, type Note } from "./schema";
+import type { AppDatabase } from "@server/db";
+import { notes, type Note } from "@server/notes/schema";
 
 export class NotesStorageError extends Data.TaggedError("NotesStorageError")<{
   readonly cause: unknown;
