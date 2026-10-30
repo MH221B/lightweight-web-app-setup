@@ -1,0 +1,9 @@
+node_modules/
+client/dist/
+client/src/routeTree.gen.ts
+.env
+.env.*
+server/data/
+*.db
+*.db-wal
+*.db-shm
