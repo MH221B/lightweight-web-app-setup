@@ -1,0 +1,4 @@
+# Keep text files LF in the working tree on every platform.
+# Without this, Git for Windows' default `core.autocrlf=true` checks files out as
+# CRLF, and `vp check` (Oxfmt) reports every file as unformatted on a clean clone.
+* text=auto eol=lf
