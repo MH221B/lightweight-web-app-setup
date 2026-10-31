@@ -4,8 +4,23 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createRouter } from "@tanstack/react-router";
 import { routeTree } from "@client/routeTree.gen";
 
-const queryClient = new QueryClient();
-const router = createRouter({ routeTree });
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 30_000,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
+const router = createRouter({
+  routeTree,
+  defaultPreload: "intent",
+  defaultPendingComponent: () => <p>Loading...</p>,
+  defaultErrorComponent: ({ error }) => (
+    <p role="alert">{error instanceof Error ? error.message : String(error)}</p>
+  ),
+  defaultNotFoundComponent: () => <p>Not found</p>,
+});
 
 declare module "@tanstack/react-router" {
   interface Register {

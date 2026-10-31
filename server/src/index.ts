@@ -1,19 +1,19 @@
 import { createApp } from "@server/app";
 import { createDb, defaultDatabasePath, migrateDb } from "@server/db";
+import { env } from "@server/env";
 
-const db = createDb();
+const db = createDb(env.DATABASE_PATH ?? defaultDatabasePath);
 migrateDb(db);
 
 const app = createApp(db, { serveClient: true });
-const port = Number(process.env.PORT ?? 3000);
 
 console.log(
-  `Serving API and client on http://localhost:${port} (database: ${
-    process.env.DATABASE_PATH ?? defaultDatabasePath
+  `Serving API and client on http://localhost:${env.PORT} (database: ${
+    env.DATABASE_PATH ?? defaultDatabasePath
   })`,
 );
 
 export default {
-  port,
+  port: env.PORT,
   fetch: app.fetch,
 };

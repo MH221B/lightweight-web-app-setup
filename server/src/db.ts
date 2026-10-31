@@ -25,8 +25,10 @@ export function createDb(path = process.env.DATABASE_PATH ?? defaultDatabasePath
 
   if (path !== ":memory:") {
     client.exec("PRAGMA journal_mode = WAL;");
+    client.exec("PRAGMA synchronous = NORMAL;");
   }
   client.exec("PRAGMA foreign_keys = ON;");
+  client.exec("PRAGMA busy_timeout = 5000;");
 
   return drizzle(client, { schema });
 }

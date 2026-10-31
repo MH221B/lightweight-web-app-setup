@@ -13,23 +13,17 @@ A copyable Bun workspace with a React 19 client and a Hono API on Bun. The Notes
 bun install
 ```
 
-## Develop (two processes)
-
-Terminal 1:
+## Develop
 
 ```bash
-bun run dev:server
-```
-
-Terminal 2:
-
-```bash
-bun run dev:client
+bun run dev
 ```
 
 - Client: <http://localhost:5173>
 - API: <http://localhost:3000>
 - Vite proxies `/api` to the Bun server.
+
+`bun run dev` starts both processes with `bun run --parallel`, so no second terminal or extra tooling is needed. The two-terminal path still works if you prefer it: `bun run dev:server` in one terminal and `bun run dev:client` in another.
 
 ## Build and static checks
 
@@ -39,10 +33,12 @@ bun run check
 
 `bun run check` runs two steps:
 
-1. `bun run build` — `vp build` for the client, which also generates `client/src/routeTree.gen.ts` (ignored by git).
+1. `bun run routes` — `tsr generate` regenerates `client/src/routeTree.gen.ts` (ignored by git) without a full build, so a fresh clone type checks immediately.
 2. `vp check` — Vite+ formatting (Oxfmt), linting (Oxlint), and full TypeScript checks (type-aware Oxlint with `typescript-go`/tsgolint) across both `client/` and `server/`. Run it from the repository root so the root `vite.config.ts` applies.
 
-`bun run typecheck` is the same type check without formatting or linting (`vp check --no-fmt --no-lint`). On a fresh clone, run `bun run build` first so the generated route tree exists.
+`bun run typecheck` is the same type check without formatting or linting (`bun run routes && vp check --no-fmt --no-lint`).
+
+`bun run verify` is the full gate: `check` + `test` + `build`.
 
 ## Vite+ tooling
 
@@ -74,6 +70,8 @@ const api = hc<AppType>("/");
 
 `@client/...` resolves to `client/src/`, and `@server/...` resolves to `server/src/`. The client imports `@server/app` only as a type, so server code stays out of the browser bundle.
 
+Controllers are registered as module providers rather than Awilixify lifecycle controllers because `hc` needs the route type to be statically derivable from the chained `Hono` expression. Decorator-based routing would work, but `AppType` would collapse to `unknown` and the client would lose end-to-end types. We chose types.
+
 To prove the contract, run:
 
 ```bash
@@ -81,6 +79,16 @@ bun run check
 ```
 
 Expected: exit code 0. If `client/src/api.ts` says `api.api` is `unknown`, the route chain has been broken; do not cast `AppType`.
+
+## Environment
+
+The server validates its environment at boot in `server/src/env.ts` and fails fast on invalid values:
+
+| Variable        | Default              | Notes                                    |
+| --------------- | -------------------- | ---------------------------------------- |
+| `PORT`          | `3000`               | Integer, 1-65535                         |
+| `DATABASE_PATH` | `server/data/app.db` | Absolute, or relative to the process cwd |
+| `NODE_ENV`      | `development`        | `development`, `test`, or `production`   |
 
 ## Database
 
@@ -113,6 +121,8 @@ bun run start
 - The Bun process serves `/api/*` and `client/dist`.
 - `GET /api/*` misses return JSON 404s and never fall through to `index.html`.
 - Other GET paths fall back to `index.html` for client-side routing.
+- Responses are gzip-compressed when the client sends `Accept-Encoding` (HTML, JS, and JSON above the middleware's size threshold).
+- `/assets/*` is served with `Cache-Control: public, max-age=31536000, immutable`; `index.html` (including the SPA fallback) is `no-cache`, so deploys are picked up immediately.
 - Default port: 3000. Override with `PORT`.
 - Default database: `server/data/app.db`. Override with `DATABASE_PATH`.
 
@@ -150,11 +160,10 @@ From a fresh clone:
 
 ```bash
 bun install --frozen-lockfile
-bun run check
-bun run test
+bun run verify
 ```
 
-Expected: build and static checks (`vp check`: format, lint, typecheck) exit 0; the Notes integration tests report `5 pass`, `0 fail`.
+Expected: `bun run check` (format, lint, typecheck) and `bun run build` exit 0; the Notes integration tests report `5 pass`, `0 fail`.
 
 Production check:
 
