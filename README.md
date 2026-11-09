@@ -1,6 +1,6 @@
 # Lightweight web app starter
 
-A copyable Bun workspace with a React 19 client and a Hono API on Bun. The Notes example is intentionally disposable.
+A copyable Bun workspace with a React 19 client and a NestJS/Fastify API on Bun. The Notes example is intentionally disposable.
 
 ## Prerequisites
 
@@ -55,30 +55,13 @@ This baseline uses the project-local Vite+ CLI (`vite-plus@1.4.0`); no global in
 | `vp create` / `vp migrate` | Not used              | The project is hand-authored; generators and codemods are out of scope.                                           |
 | `vp pack` / tsdown         | Not applicable        | No library package is published from this app.                                                                    |
 
-Server tests use `bun:test` on purpose: they exercise the real Hono app against an in-memory `bun:sqlite` database through the checked-in Drizzle migration, which Vitest would have to run under Bun anyway. `bun run test` delegates to `bun test` in `server/`.
+Server tests use `bun:test` on purpose: they exercise the NestJS/Fastify app against an in-memory `bun:sqlite` database through the checked-in Drizzle migration. `bun run test` delegates to `bun test` in `server/`.
 
-## RPC contract
+## API contract
 
-The client imports the server's `AppType` as a type only:
+`shared/notes.contract.ts` defines the ts-rest contract. The NestJS controller implements it with `@TsRestHandler`, and the client uses the ts-rest fetch client. Zod schemas validate requests and provide end-to-end types without code generation.
 
-```ts
-import type { AppType } from "@server/app";
-const api = hc<AppType>("/");
-```
-
-`AppType` is the return type of `createApp` in `server/src/app.ts`, whose chained `new Hono().route(...)` expression carries the route schema, not a side-effect-mutated `Hono` variable. The controller is registered as an Awilixify provider, not in `controllers: []`, because Awilixify's controller lifecycle hides the instance and cannot extend Hono's inferred route type. `createApp` resolves the controller from the Awilixify container and calls `registerRoutes()` once to mount the typed sub-app.
-
-`@client/...` resolves to `client/src/`, and `@server/...` resolves to `server/src/`. The client imports `@server/app` only as a type, so server code stays out of the browser bundle.
-
-Controllers are registered as module providers rather than Awilixify lifecycle controllers because `hc` needs the route type to be statically derivable from the chained `Hono` expression. Decorator-based routing would work, but `AppType` would collapse to `unknown` and the client would lose end-to-end types. We chose types.
-
-To prove the contract, run:
-
-```bash
-bun run check
-```
-
-Expected: exit code 0. If `client/src/api.ts` says `api.api` is `unknown`, the route chain has been broken; do not cast `AppType`.
+`@client/...` resolves to `client/src/`, `@server/...` to `server/src/`, and `@shared/...` to `shared/`. The client imports the shared contract, not the server application.
 
 ## Environment
 
@@ -132,6 +115,7 @@ Delete or replace these files together:
 
 - `client/src/routes/index.tsx` — the page
 - `client/src/api.ts` — the typed client and Notes helpers
+- `shared/notes.contract.ts` — the shared contract
 - `server/src/notes/notes.controller.ts`
 - `server/src/notes/notes.module.ts`
 - `server/src/notes/notes.service.ts`
@@ -141,17 +125,18 @@ Delete or replace these files together:
 
 Then:
 
-- Remove the `createNotesModule`/`registerRoutes` mount from `server/src/app.ts`.
+- Remove `NotesModule` from the imports in `server/src/app.ts`.
 - Replace the `db` provider in the app factory when you introduce a new schema.
 - Remove `server/data/` for a clean database.
-- Keep the root workspace, `client/vite.config.ts`, `server/src/db.ts`, and the Bun static-hosting code.
+- Keep the root workspace, `client/vite.config.ts`, `server/src/db.ts`, and the static-hosting code.
 
 To rename rather than remove, replace `Notes`, `notes`, and `/api/notes` consistently across those files, then regenerate migrations only if the table name changes.
 
 ## Layout
 
-- `client/` — React 19, Vite+, TanStack Router and Query, Hono `hc`
-- `server/` — Hono on Bun, Awilixify, Effect, Zod, Drizzle, SQLite
+- `client/` — React 19, Vite+, TanStack Router and Query, ts-rest client
+- `server/` — NestJS/Fastify on Bun, ts-rest, Effect, Zod, Drizzle, SQLite
+- `shared/` — the ts-rest API contract used by client and server
 - `server/data/` — persistent SQLite files (ignored)
 
 ## Verification

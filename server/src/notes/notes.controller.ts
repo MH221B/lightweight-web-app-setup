@@ -1,56 +1,35 @@
-import { Hono } from "hono";
-import { zValidator } from "@hono/zod-validator";
-import { z } from "zod";
-import type { Controller } from "awilixify";
+import { Controller, Inject } from "@nestjs/common";
+import { TsRestHandler, tsRestHandler } from "@ts-rest/nest";
 import { Effect } from "effect";
-import type { NotesService } from "@server/notes/notes.service";
+import { notesContract } from "@shared/notes.contract";
+import { NotesService } from "@server/notes/notes.service";
 
-export const CreateNoteSchema = z.object({
-  text: z.string().trim().min(1).max(200),
-});
+@Controller()
+export class NotesController {
+  constructor(@Inject(NotesService) private readonly notesService: NotesService) {}
 
-export class NotesController implements Controller {
-  constructor(private readonly notesService: NotesService) {}
-
-  registerRoutes() {
-    return new Hono()
-      .get("/", async (c) => {
-        const outcome = await Effect.runPromise(
-          Effect.match(this.notesService.list(), {
-            onFailure: () => ({ ok: false as const }),
-            onSuccess: (notes) => ({ ok: true as const, notes }),
-          }),
-        );
-
-        if (!outcome.ok) {
-          return c.json({ error: "Notes are unavailable" }, 503);
-        }
-
-        return c.json({ notes: outcome.notes }, 200);
-      })
-      .post(
-        "/",
-        zValidator("json", CreateNoteSchema, (result, c) => {
-          if (!result.success) {
-            return c.json({ error: "Note text must be 1-200 characters" }, 400);
-          }
+  @TsRestHandler(notesContract.list)
+  list() {
+    return tsRestHandler(notesContract.list, async () => {
+      const result = await Effect.runPromise(
+        Effect.match(this.notesService.list(), {
+          onFailure: () => ({ status: 503 as const, body: { error: "Notes are unavailable" } }),
+          onSuccess: (notes) => ({ status: 200 as const, body: { notes } }),
         }),
-        async (c) => {
-          const { text } = c.req.valid("json");
-
-          const outcome = await Effect.runPromise(
-            Effect.match(this.notesService.create(text), {
-              onFailure: () => ({ ok: false as const }),
-              onSuccess: (note) => ({ ok: true as const, note }),
-            }),
-          );
-
-          if (!outcome.ok) {
-            return c.json({ error: "Notes are unavailable" }, 503);
-          }
-
-          return c.json({ note: outcome.note }, 201);
-        },
       );
+      return result;
+    });
+  }
+
+  @TsRestHandler(notesContract.create)
+  create() {
+    return tsRestHandler(notesContract.create, async ({ body }) => {
+      return Effect.runPromise(
+        Effect.match(this.notesService.create(body.text), {
+          onFailure: () => ({ status: 503 as const, body: { error: "Notes are unavailable" } }),
+          onSuccess: (note) => ({ status: 201 as const, body: { note } }),
+        }),
+      );
+    });
   }
 }

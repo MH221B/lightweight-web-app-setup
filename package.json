@@ -3,7 +3,8 @@
   "private": true,
   "workspaces": [
     "client",
-    "server"
+    "server",
+    "shared"
   ],
   "type": "module",
   "scripts": {

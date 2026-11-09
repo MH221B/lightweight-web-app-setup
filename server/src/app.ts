@@ -1,48 +1,73 @@
-import { Hono, type Context } from "hono";
-import { serveStatic } from "@hono/bun";
-import { compress } from "hono/compress";
-import { HTTPException } from "hono/http-exception";
-import { DIContext } from "awilixify";
-import { join, relative } from "node:path";
+import "reflect-metadata";
+import {
+  Catch,
+  Global,
+  HttpException,
+  Module,
+  type ArgumentsHost,
+  type ExceptionFilter,
+} from "@nestjs/common";
+import { NestFactory } from "@nestjs/core";
+import { FastifyAdapter, type NestFastifyApplication } from "@nestjs/platform-fastify";
+import { RequestValidationError } from "@ts-rest/nest";
+import { join, relative, resolve, sep } from "node:path";
+import type { FastifyReply, FastifyRequest } from "fastify";
 import type { AppDatabase } from "@server/db";
-import { createNotesModule, type NotesModuleDef } from "@server/notes/notes.module";
+import { NotesModule } from "@server/notes/notes.module";
 
-const clientDist = join(import.meta.dir, "../../client/dist");
+const clientDist = resolve(import.meta.dir, "../../client/dist");
 
-// Fingerprinted Vite assets never change; everything else (notably index.html) must revalidate.
-function setCacheHeaders(path: string, c: Context) {
-  const file = relative(clientDist, path).replaceAll("\\", "/");
-  c.header(
-    "Cache-Control",
-    file.startsWith("assets/") ? "public, max-age=31536000, immutable" : "no-cache",
-  );
-}
+export async function createApp(db: AppDatabase, options: { serveClient?: boolean } = {}) {
+  @Global()
+  @Module({ providers: [{ provide: "DATABASE", useValue: db }], exports: ["DATABASE"] })
+  class DatabaseModule {}
 
-export function createApp(db: AppDatabase, options: { serveClient?: boolean } = {}) {
-  const container = DIContext.create(createNotesModule(db));
-  const notesController =
-    container.scope.resolve<NotesModuleDef["deps"]["notesController"]>("notesController");
+  @Module({ imports: [DatabaseModule, NotesModule] })
+  class AppModule {}
 
-  const app = new Hono().use("*", compress()).route("/api/notes", notesController.registerRoutes());
-
-  app.all("/api", (c) => c.json({ error: "Not found" }, 404));
-  app.all("/api/*", (c) => c.json({ error: "Not found" }, 404));
-
-  app.onError((error, c) => {
-    if (error instanceof HTTPException && error.status === 400) {
-      return c.json({ error: "Invalid JSON body" }, 400);
+  @Catch()
+  class ErrorFilter implements ExceptionFilter {
+    async catch(error: unknown, host: ArgumentsHost) {
+      const request = host.switchToHttp().getRequest<FastifyRequest>();
+      const reply = host.switchToHttp().getResponse<FastifyReply>();
+      if (error instanceof RequestValidationError) {
+        return reply.status(400).send({ error: "Note text must be 1-200 characters" });
+      }
+      const status = error instanceof HttpException ? error.getStatus() : 500;
+      if (status === 400) return reply.status(400).send({ error: "Invalid JSON body" });
+      if (status === 404) {
+        const path = request.url.split("?")[0] ?? "/";
+        if (path === "/api" || path.startsWith("/api/"))
+          return reply.status(404).send({ error: "Not found" });
+        if (options.serveClient && request.method === "GET") {
+          const filePath = resolve(clientDist, `.${decodeURIComponent(path)}`);
+          const file = Bun.file(
+            filePath.startsWith(clientDist + sep) ? filePath : join(clientDist, "index.html"),
+          );
+          const target = (await file.exists()) ? file : Bun.file(join(clientDist, "index.html"));
+          if (await target.exists()) {
+            const file = relative(clientDist, target.name ?? "").replaceAll("\\", "/");
+            reply.header(
+              "Cache-Control",
+              file.startsWith("assets/") ? "public, max-age=31536000, immutable" : "no-cache",
+            );
+            return reply
+              .type(target.type || "application/octet-stream")
+              .send(Buffer.from(await target.arrayBuffer()));
+          }
+        }
+        return reply.status(404).send({ error: "Not found" });
+      }
+      console.error(error);
+      return reply.status(500).send({ error: "Internal server error" });
     }
-
-    console.error(error);
-    return c.json({ error: "Internal server error" }, 500);
-  });
-
-  if (options.serveClient) {
-    app.use("*", serveStatic({ root: clientDist, onFound: setCacheHeaders }));
-    app.get("*", serveStatic({ root: clientDist, path: "index.html", onFound: setCacheHeaders }));
   }
 
+  const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter(), {
+    logger: false,
+  });
+  app.useGlobalFilters(new ErrorFilter());
+  await app.init();
+  await app.getHttpAdapter().getInstance().ready();
   return app;
 }
-
-export type AppType = ReturnType<typeof createApp>;

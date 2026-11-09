@@ -1,4 +1,5 @@
 import { Data, Effect } from "effect";
+import { Inject, Injectable } from "@nestjs/common";
 import { desc } from "drizzle-orm";
 import type { AppDatabase } from "@server/db";
 import { notes, type Note } from "@server/notes/schema";
@@ -7,8 +8,9 @@ export class NotesStorageError extends Data.TaggedError("NotesStorageError")<{
   readonly cause: unknown;
 }> {}
 
+@Injectable()
 export class NotesService {
-  constructor(private readonly db: AppDatabase) {}
+  constructor(@Inject("DATABASE") private readonly db: AppDatabase) {}
 
   list(): Effect.Effect<Note[], NotesStorageError> {
     return Effect.try({

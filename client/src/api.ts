@@ -1,31 +1,22 @@
-import { hc } from "hono/client";
-import type { InferRequestType, InferResponseType } from "hono/client";
-import type { AppType } from "@server/app";
+import { initClient } from "@ts-rest/core";
+import { notesContract } from "@shared/notes.contract";
+import type { z } from "zod";
 
-export const api = hc<AppType>("/");
-
-export type NotesListResponse = InferResponseType<typeof api.api.notes.$get, 200>;
-export type CreateNoteRequest = InferRequestType<typeof api.api.notes.$post>["json"];
-export type Note = NotesListResponse["notes"][number];
+const api = initClient(notesContract, { baseUrl: "", baseHeaders: {} });
+export type Note = z.infer<(typeof notesContract.list.responses)[200]>["notes"][number];
 
 export async function fetchNotes(): Promise<Note[]> {
-  const res = await api.api.notes.$get();
-  const body = await res.json();
-
-  if (!res.ok || !("notes" in body)) {
-    throw new Error("Could not load notes");
-  }
-
-  return body.notes;
+  const res = await api.list();
+  if (res.status !== 200) throw new Error("Could not load notes");
+  return res.body.notes;
 }
 
 export async function createNote(text: string): Promise<Note> {
-  const res = await api.api.notes.$post({ json: { text } });
-  const body = await res.json();
-
-  if ("note" in body) {
-    return body.note;
-  }
-
-  throw new Error("error" in body ? body.error : "Could not save note");
+  const res = await api.create({ body: { text } });
+  if (res.status === 201) return res.body.note;
+  throw new Error(
+    typeof res.body === "object" && res.body && "error" in res.body
+      ? String(res.body.error)
+      : "Could not save note",
+  );
 }

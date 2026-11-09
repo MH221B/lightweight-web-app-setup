@@ -6,8 +6,9 @@
     "types": ["vite-plus/client", "bun"],
     "paths": {
       "@client/*": ["./src/*"],
-      "@server/*": ["../server/src/*"]
+      "@server/*": ["../server/src/*"],
+      "@shared/*": ["../shared/*"]
     }
   },
-  "include": ["src", "vite.config.ts"]
+  "include": ["src", "vite.config.ts", "../shared"]
 }
