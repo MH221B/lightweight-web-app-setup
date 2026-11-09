@@ -2,6 +2,15 @@
 
 A copyable Bun workspace with a React 19 client and a NestJS/Fastify API on Bun. The Notes example is intentionally disposable.
 
+## Stack
+
+- **Client:** React 19, Vite+, TanStack Router and Query.
+- **API:** NestJS controllers, modules, and services using Fastify on Bun.
+- **Shared types:** a ts-rest contract in `shared/notes.contract.ts`. Zod validates request bodies; the controller and browser client use the same route and response types.
+- **Data:** Effect handles storage errors; Drizzle accesses SQLite through `bun:sqlite`.
+
+![Notes request flow: React client and NestJS controller share a ts-rest contract; the controller calls a service backed by Drizzle and SQLite.](architecture.svg)
+
 ## Prerequisites
 
 - Bun 1.4.4 (`bun --version`)
@@ -59,7 +68,7 @@ Server tests use `bun:test` on purpose: they exercise the NestJS/Fastify app aga
 
 ## API contract
 
-`shared/notes.contract.ts` defines the ts-rest contract. The NestJS controller implements it with `@TsRestHandler`, and the client uses the ts-rest fetch client. Zod schemas validate requests and provide end-to-end types without code generation.
+`shared/notes.contract.ts` defines the routes, request validation, and response types for `GET /api/notes` and `POST /api/notes`. `server/src/notes/notes.controller.ts` implements them with `@TsRestHandler` and calls the injectable `NotesService`. `client/src/api.ts` calls the same contract through the ts-rest fetch client. No generated API client is needed.
 
 `@client/...` resolves to `client/src/`, `@server/...` to `server/src/`, and `@shared/...` to `shared/`. The client imports the shared contract, not the server application.
 
@@ -138,6 +147,8 @@ To rename rather than remove, replace `Notes`, `notes`, and `/api/notes` consist
 - `server/` — NestJS/Fastify on Bun, ts-rest, Effect, Zod, Drizzle, SQLite
 - `shared/` — the ts-rest API contract used by client and server
 - `server/data/` — persistent SQLite files (ignored)
+
+The diagram source is [`architecture.mmd`](architecture.mmd); its rendered image is [`architecture.svg`](architecture.svg).
 
 ## Verification
 
