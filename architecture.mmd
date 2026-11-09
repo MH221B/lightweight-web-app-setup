@@ -1,12 +1,18 @@
-flowchart LR
-  Client[React client<br/>Vite+ · TanStack]
-  API[NestJS controller<br/>Fastify on Bun]
-  Service[NestJS service<br/>Effect]
-  DB[(SQLite<br/>Drizzle · bun:sqlite)]
+flowchart TB
   Contract[Shared contract<br/>ts-rest · Zod]
+  subgraph Request
+    direction LR
+    Client[React client<br/>ts-rest client]
+    API[NestJS controller<br/>Fastify on Bun]
+    Client -->|HTTP request| API
+  end
+  subgraph Storage
+    direction LR
+    Service[Injectable service<br/>Effect]
+    DB[(SQLite<br/>Drizzle · bun:sqlite)]
+    Service --> DB
+  end
 
-  Client -->|HTTP request| API
   API --> Service
-  Service --> DB
   Contract -.-> Client
   Contract -.-> API
