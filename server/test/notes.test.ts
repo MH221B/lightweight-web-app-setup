@@ -91,4 +91,61 @@ describe("notes api", () => {
       expect(await res.json()).toEqual({ error: "Not found" });
     }
   });
+
+  test("rejects missing and non-string text", async () => {
+    for (const body of [{}, { text: null }, { text: 42 }, { text: [] }]) {
+      const res = await request("/api/notes", postJson(body));
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "Note text must be 1-200 characters" });
+    }
+  });
+
+  test("returns 503 for storage failures", async () => {
+    const brokenDb = createDb(":memory:");
+    migrateDb(brokenDb);
+    const brokenApp = await createApp(brokenDb, { serveClient: false });
+    brokenDb.$client.close();
+    try {
+      const list = await brokenApp.inject({ method: "GET", url: "/api/notes" });
+      const create = await brokenApp.inject({
+        method: "POST",
+        url: "/api/notes",
+        headers: { "content-type": "application/json" },
+        payload: JSON.stringify({ text: "hello" }),
+      });
+      for (const response of [list, create]) {
+        expect(response.statusCode).toBe(503);
+        expect(response.json()).toEqual({ error: "Notes are unavailable" });
+      }
+    } finally {
+      await brokenApp.close();
+    }
+  });
+
+  test("browser API uses actual Nest routes and preserves errors", async () => {
+    await app.listen(0, "127.0.0.1");
+    const address = app.getHttpServer().address();
+    if (!address || typeof address === "string") throw new Error("Missing server address");
+    const original = Object.getOwnPropertyDescriptor(globalThis, "location");
+    Object.defineProperty(globalThis, "location", {
+      configurable: true,
+      value: { origin: `http://127.0.0.1:${address.port}` },
+    });
+    try {
+      const { createNote, fetchNotes } = await import("../../client/src/api");
+      const note = await createNote("  typed client  ");
+      expect(note.text).toBe("typed client");
+      expect((await fetchNotes()).some((item) => item.id === note.id)).toBe(true);
+      await createNote(" ").then(
+        () => {
+          throw new Error("Expected invalid note to be rejected");
+        },
+        (error: unknown) =>
+          expect(error).toHaveProperty("message", "Note text must be 1-200 characters"),
+      );
+    } finally {
+      if (original) Object.defineProperty(globalThis, "location", original);
+      else Reflect.deleteProperty(globalThis, "location");
+    }
+  });
 });

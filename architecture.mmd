@@ -1,8 +1,8 @@
 flowchart TB
-  Contract[Shared contract<br/>ts-rest · Zod]
+  Contract[Shared contract<br/>oRPC v1 · Zod]
   subgraph Request
     direction LR
-    Client[React client<br/>ts-rest client]
+    Client[React client<br/>oRPC OpenAPI client]
     API[NestJS controller<br/>Fastify on Bun]
     Client -->|HTTP request| API
   end

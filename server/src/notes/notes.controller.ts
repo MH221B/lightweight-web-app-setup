@@ -1,5 +1,5 @@
 import { Controller, Inject } from "@nestjs/common";
-import { TsRestHandler, tsRestHandler } from "@ts-rest/nest";
+import { Implement, implement, ORPCError } from "@orpc/nest";
 import { Effect } from "effect";
 import { notesContract } from "@shared/notes.contract";
 import { NotesService } from "@server/notes/notes.service";
@@ -8,28 +8,33 @@ import { NotesService } from "@server/notes/notes.service";
 export class NotesController {
   constructor(@Inject(NotesService) private readonly notesService: NotesService) {}
 
-  @TsRestHandler(notesContract.list)
+  @Implement(notesContract.list)
   list() {
-    return tsRestHandler(notesContract.list, async () => {
-      const result = await Effect.runPromise(
+    return implement(notesContract.list).handler(async () => {
+      const notes = await Effect.runPromise(
         Effect.match(this.notesService.list(), {
-          onFailure: () => ({ status: 503 as const, body: { error: "Notes are unavailable" } }),
-          onSuccess: (notes) => ({ status: 200 as const, body: { notes } }),
+          onFailure: () => null,
+          onSuccess: (value) => value,
         }),
       );
-      return result;
+      if (notes === null)
+        throw new ORPCError("SERVICE_UNAVAILABLE", { message: "Notes are unavailable" });
+      return { notes };
     });
   }
 
-  @TsRestHandler(notesContract.create)
+  @Implement(notesContract.create)
   create() {
-    return tsRestHandler(notesContract.create, async ({ body }) => {
-      return Effect.runPromise(
-        Effect.match(this.notesService.create(body.text), {
-          onFailure: () => ({ status: 503 as const, body: { error: "Notes are unavailable" } }),
-          onSuccess: (note) => ({ status: 201 as const, body: { note } }),
+    return implement(notesContract.create).handler(async ({ input }) => {
+      const note = await Effect.runPromise(
+        Effect.match(this.notesService.create(input.text), {
+          onFailure: () => null,
+          onSuccess: (value) => value,
         }),
       );
+      if (note === null)
+        throw new ORPCError("SERVICE_UNAVAILABLE", { message: "Notes are unavailable" });
+      return { note };
     });
   }
 }

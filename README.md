@@ -6,10 +6,10 @@ A copyable Bun workspace with a React 19 client and a NestJS/Fastify API on Bun.
 
 - **Client:** React 19, Vite+, TanStack Router and Query.
 - **API:** NestJS controllers, modules, and services using Fastify on Bun.
-- **Shared types:** a ts-rest contract in `shared/notes.contract.ts`. Zod validates request bodies; the controller and browser client use the same route and response types.
+- **Shared types:** an oRPC v1 contract in `shared/notes.contract.ts`. Zod validates request bodies; the controller and browser client use the same route and response types.
 - **Data:** Effect handles storage errors; Drizzle accesses SQLite through `bun:sqlite`.
 
-![Notes request flow: React client and NestJS controller share a ts-rest contract; the controller calls a service backed by Drizzle and SQLite.](architecture.png)
+![Notes request flow: React client and NestJS controller share an oRPC v1 contract; the controller calls a service backed by Drizzle and SQLite.](architecture.png)
 
 ## Prerequisites
 
@@ -68,7 +68,7 @@ Server tests use `bun:test` on purpose: they exercise the NestJS/Fastify app aga
 
 ## API contract
 
-`shared/notes.contract.ts` defines the routes, request validation, and response types for `GET /api/notes` and `POST /api/notes`. `server/src/notes/notes.controller.ts` implements them with `@TsRestHandler` and calls the injectable `NotesService`. `client/src/api.ts` calls the same contract through the ts-rest fetch client. No generated API client is needed.
+`shared/notes.contract.ts` defines the routes, request validation, and response types for `GET /api/notes` and `POST /api/notes`. `server/src/notes/notes.controller.ts` implements them with the Nest controller decorator `@Implement` and calls the injectable `NotesService`. `client/src/api.ts` uses a contract-driven oRPC OpenAPI client. No generated API client is needed.
 
 `@client/...` resolves to `client/src/`, `@server/...` to `server/src/`, and `@shared/...` to `shared/`. The client imports the shared contract, not the server application.
 
@@ -143,9 +143,9 @@ To rename rather than remove, replace `Notes`, `notes`, and `/api/notes` consist
 
 ## Layout
 
-- `client/` — React 19, Vite+, TanStack Router and Query, ts-rest client
-- `server/` — NestJS/Fastify on Bun, ts-rest, Effect, Zod, Drizzle, SQLite
-- `shared/` — the ts-rest API contract used by client and server
+- `client/` — React 19, Vite+, TanStack Router and Query, oRPC OpenAPI client
+- `server/` — NestJS/Fastify on Bun, oRPC v1, Effect, Zod, Drizzle, SQLite
+- `shared/` — the oRPC v1 API contract used by client and server
 - `server/data/` — persistent SQLite files (ignored)
 
 The diagram source is [`architecture.mmd`](architecture.mmd); the README uses [`architecture.png`](architecture.png).
@@ -159,7 +159,7 @@ bun install --frozen-lockfile
 bun run verify
 ```
 
-Expected: `bun run check` (format, lint, typecheck) and `bun run build` exit 0; the Notes integration tests report `5 pass`, `0 fail`.
+Expected: `bun run check` (format, lint, typecheck) and `bun run build` exit 0; the Notes integration tests report `8 pass`, `0 fail`.
 
 Production check:
 

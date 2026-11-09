@@ -9,7 +9,7 @@ import {
 } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import { FastifyAdapter, type NestFastifyApplication } from "@nestjs/platform-fastify";
-import { RequestValidationError } from "@ts-rest/nest";
+import { ORPCModule } from "@orpc/nest";
 import { join, relative, resolve, sep } from "node:path";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type { AppDatabase } from "@server/db";
@@ -22,7 +22,19 @@ export async function createApp(db: AppDatabase, options: { serveClient?: boolea
   @Module({ providers: [{ provide: "DATABASE", useValue: db }], exports: ["DATABASE"] })
   class DatabaseModule {}
 
-  @Module({ imports: [DatabaseModule, NotesModule] })
+  @Module({
+    imports: [
+      ORPCModule.forRoot({
+        customErrorResponseBodyEncoder(error) {
+          if (error.status === 400) return { error: "Note text must be 1-200 characters" };
+          if (error.status === 503) return { error: "Notes are unavailable" };
+          return { error: "Internal server error" };
+        },
+      }),
+      DatabaseModule,
+      NotesModule,
+    ],
+  })
   class AppModule {}
 
   @Catch()
@@ -30,9 +42,6 @@ export async function createApp(db: AppDatabase, options: { serveClient?: boolea
     async catch(error: unknown, host: ArgumentsHost) {
       const request = host.switchToHttp().getRequest<FastifyRequest>();
       const reply = host.switchToHttp().getResponse<FastifyReply>();
-      if (error instanceof RequestValidationError) {
-        return reply.status(400).send({ error: "Note text must be 1-200 characters" });
-      }
       const status = error instanceof HttpException ? error.getStatus() : 500;
       if (status === 400) return reply.status(400).send({ error: "Invalid JSON body" });
       if (status === 404) {
