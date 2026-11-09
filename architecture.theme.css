@@ -1,0 +1,13 @@
+.pele {
+  --pele-bg: #ffffff;
+  --pele-fg: #14243a;
+  --pele-muted: #50637d;
+  --pele-line: #3566a4;
+  --pele-surface: #edf5ff;
+  --pele-surface-alt: #e0f0ee;
+  --pele-border: #91b3d9;
+  --pele-accent: #2563a6;
+  --pele-radius: 12px;
+  --pele-font: "Segoe UI", Arial, sans-serif;
+  background: #ffffff;
+}

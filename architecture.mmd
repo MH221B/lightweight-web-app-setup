@@ -1,6 +1,12 @@
 flowchart LR
-  Contract[ts-rest contract and Zod schemas] -.-> Browser[React client]
-  Contract -.-> API[NestJS controller]
-  Browser -->|ts-rest request over Fastify| API
-  API --> Service[NestJS service and Effect]
-  Service --> DB[Drizzle and bun:sqlite]
+  Client[React client<br/>Vite+ · TanStack]
+  API[NestJS controller<br/>Fastify on Bun]
+  Service[NestJS service<br/>Effect]
+  DB[(SQLite<br/>Drizzle · bun:sqlite)]
+  Contract[Shared contract<br/>ts-rest · Zod]
+
+  Client -->|HTTP request| API
+  API --> Service
+  Service --> DB
+  Contract -.-> Client
+  Contract -.-> API

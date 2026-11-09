@@ -9,7 +9,7 @@ A copyable Bun workspace with a React 19 client and a NestJS/Fastify API on Bun.
 - **Shared types:** a ts-rest contract in `shared/notes.contract.ts`. Zod validates request bodies; the controller and browser client use the same route and response types.
 - **Data:** Effect handles storage errors; Drizzle accesses SQLite through `bun:sqlite`.
 
-![Notes request flow: React client and NestJS controller share a ts-rest contract; the controller calls a service backed by Drizzle and SQLite.](architecture.svg)
+![Notes request flow: React client and NestJS controller share a ts-rest contract; the controller calls a service backed by Drizzle and SQLite.](architecture.png)
 
 ## Prerequisites
 
@@ -148,7 +148,7 @@ To rename rather than remove, replace `Notes`, `notes`, and `/api/notes` consist
 - `shared/` — the ts-rest API contract used by client and server
 - `server/data/` — persistent SQLite files (ignored)
 
-The diagram source is [`architecture.mmd`](architecture.mmd); its rendered image is [`architecture.svg`](architecture.svg).
+The diagram source is [`architecture.mmd`](architecture.mmd); the README uses [`architecture.png`](architecture.png).
 
 ## Verification
 
