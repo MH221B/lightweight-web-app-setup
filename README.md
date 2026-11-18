@@ -126,6 +126,7 @@ Delete or replace these files together:
 - `client/src/api.ts` — the typed client and Notes helpers
 - `shared/notes.contract.ts` — the shared contract
 - `server/src/notes/notes.controller.ts`
+- `server/src/notes/notes.errors.ts`
 - `server/src/notes/notes.module.ts`
 - `server/src/notes/notes.service.ts`
 - `server/src/notes/schema.ts`

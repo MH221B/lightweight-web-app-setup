@@ -1,20 +1,8 @@
 import { Controller, Inject } from "@nestjs/common";
-import { Implement, implement, ORPCError } from "@orpc/nest";
-import { Effect } from "effect";
+import { Implement, implement } from "@orpc/nest";
 import { notesContract } from "@shared/notes.contract";
+import { runNotesEffect } from "@server/notes/notes.errors";
 import { NotesService } from "@server/notes/notes.service";
-
-async function runNotesEffect<T>(effect: Effect.Effect<T, unknown>): Promise<T> {
-  const result = await Effect.runPromise(
-    Effect.match(effect, {
-      onFailure: () => null,
-      onSuccess: (value) => value,
-    }),
-  );
-  if (result === null)
-    throw new ORPCError("SERVICE_UNAVAILABLE", { message: "Notes are unavailable" });
-  return result;
-}
 
 @Controller()
 export class NotesController {
