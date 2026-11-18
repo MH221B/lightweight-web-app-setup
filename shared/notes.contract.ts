@@ -1,13 +1,21 @@
 import { oc } from "@orpc/contract";
-import { z } from "zod";
+import { Schema, SchemaTransformation } from "effect";
 
 export const NOTE_MAX_LENGTH = 200;
-const note = z.object({ id: z.number(), text: z.string(), createdAt: z.string() });
+const note = Schema.Struct({ id: Schema.Number, text: Schema.String, createdAt: Schema.String });
+const noteText = Schema.String.pipe(Schema.decode(SchemaTransformation.trim())).check(
+  Schema.isMinLength(1),
+  Schema.isMaxLength(NOTE_MAX_LENGTH),
+);
 
 export const notesContract = {
-  list: oc.route({ method: "GET", path: "/api/notes" }).output(z.object({ notes: z.array(note) })),
+  list: oc
+    .route({ method: "GET", path: "/api/notes" })
+    .output(
+      Schema.toStandardSchemaV1(Schema.Struct({ notes: Schema.mutable(Schema.Array(note)) })),
+    ),
   create: oc
     .route({ method: "POST", path: "/api/notes", successStatus: 201 })
-    .input(z.object({ text: z.string().trim().min(1).max(NOTE_MAX_LENGTH) }))
-    .output(z.object({ note })),
+    .input(Schema.toStandardSchemaV1(Schema.Struct({ text: noteText })))
+    .output(Schema.toStandardSchemaV1(Schema.Struct({ note }))),
 };

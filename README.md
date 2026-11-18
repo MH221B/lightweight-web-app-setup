@@ -6,7 +6,7 @@ A copyable Bun workspace with two client flavors — React 19 and Angular 22 —
 
 - **Clients:** React 19 on Vite+ with TanStack Router and Query; Angular 22 on the Angular CLI (standalone, zoneless, Signal Forms) with TanStack Angular Query.
 - **API:** NestJS controllers, modules, and services using Fastify on Bun.
-- **Shared data layer:** an oRPC v1 contract and framework-free oRPC fetch helpers in `shared/`. Zod validates request bodies; both clients and the server use the same route and response types.
+- **Shared data layer:** an oRPC v1 contract and framework-free oRPC fetch helpers in `shared/`. Effect Schema validates request bodies; both clients and the server use the same route and response types.
 - **Data:** Effect handles storage errors; Drizzle accesses SQLite through `bun:sqlite`.
 
 ![Notes request flow: the React and Angular clients share an oRPC v1 contract with the NestJS controller, which calls a service backed by Drizzle and SQLite.](architecture.svg)
@@ -190,7 +190,7 @@ To rename rather than remove, replace `Notes`, `notes`, and `/api/notes` consist
 
 - `client/` — React 19, Vite+, TanStack Router and Query, oRPC OpenAPI client
 - `client-angular/` — Angular 22, Angular CLI, Signal Forms, TanStack Angular Query, oRPC OpenAPI client
-- `server/` — NestJS/Fastify on Bun, oRPC v1, Effect, Zod, Drizzle, SQLite
+- `server/` — NestJS/Fastify on Bun, oRPC v1, Effect, Drizzle, SQLite
 - `shared/` — the oRPC v1 API contract and the framework-free oRPC client both flavors import
 - `server/data/` — persistent SQLite files (ignored)
 
@@ -205,7 +205,7 @@ bun install --frozen-lockfile
 bun run verify
 ```
 
-Expected: `bun run check` (format, lint, typecheck, angular-eslint) and `bun run build` (React and Angular) exit 0; the integration tests report `17 pass`, `0 fail`.
+Expected: `bun run check` (format, lint, typecheck, angular-eslint) and `bun run build` (React and Angular) exit 0; the integration tests report `18 pass`, `0 fail`.
 
 Production check:
 

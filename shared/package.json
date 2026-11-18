@@ -6,6 +6,6 @@
     "@orpc/client": "1.16.2",
     "@orpc/contract": "1.16.2",
     "@orpc/openapi-client": "1.16.2",
-    "zod": "3"
+    "effect": "4.1.0"
   }
 }
