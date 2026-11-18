@@ -51,7 +51,7 @@ bun run check
 
 ## Vite+ tooling
 
-This baseline uses the project-local Vite+ CLI (`vite-plus@1.4.0`); no global install is needed.
+This baseline uses the project-local Vite+ CLI (`vite-plus@1.7.0`); no global install is needed.
 
 | Tool                       | Status                | Notes                                                                                                             |
 | -------------------------- | --------------------- | ----------------------------------------------------------------------------------------------------------------- |
@@ -192,7 +192,7 @@ To start a new project:
 2. Run `bun install`.
 3. Rename the root package and the `client`/`server` package names if desired.
 4. Replace the Notes example using the removal list above.
-5. Keep `server/src/db.ts`, the static-hosting block in `server/src/app.ts`, and `client/vite.config.ts`.
+5. Keep `server/src/db.ts`, `server/src/hosting.ts`, and `client/vite.config.ts`.
 6. Run `bun run check` and `bun run test` after the replacement.
 
 Never commit `server/data/`, `client/dist/`, or the generated route tree.

@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { createApp } from "@server/app";
 import { createDb, migrateDb } from "@server/db";
 import type { AppDatabase } from "@server/schema";
@@ -112,6 +112,7 @@ describe("notes api", () => {
     migrateDb(brokenDb);
     const brokenApp = await createApp(brokenDb, { serveClient: false });
     brokenDb.$client.close();
+    const log = spyOn(console, "error").mockImplementation(() => {});
     try {
       const list = await brokenApp.inject({ method: "GET", url: "/api/notes" });
       const create = await brokenApp.inject({
@@ -124,7 +125,13 @@ describe("notes api", () => {
         expect(response.statusCode).toBe(503);
         expect(response.json()).toEqual({ error: "Notes are unavailable" });
       }
+      expect(log).toHaveBeenCalledTimes(2);
+      for (const call of log.mock.calls) {
+        expect(call[0]).toBe("Notes storage failure:");
+        expect(call[1]).toBeInstanceOf(Error);
+      }
     } finally {
+      log.mockRestore();
       await brokenApp.close();
     }
   });
