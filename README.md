@@ -30,7 +30,7 @@ bun run dev
 
 - Client: <http://localhost:5173>
 - API: <http://localhost:3000>
-- Vite proxies `/api` to the Bun server.
+- Vite proxies `/api` to the Bun server on `PORT`, defaulting to 3000. Set `PORT` for both processes when changing the API port.
 
 `bun run dev` starts both processes with `bun run --parallel`, so no second terminal or extra tooling is needed. The two-terminal path still works if you prefer it: `bun run dev:server` in one terminal and `bun run dev:client` in another.
 
@@ -113,7 +113,7 @@ bun run start
 - The Bun process serves `/api/*` and `client/dist`.
 - `GET /api/*` misses return JSON 404s and never fall through to `index.html`.
 - Other GET paths fall back to `index.html` for client-side routing.
-- Responses are gzip-compressed when the client sends `Accept-Encoding` (HTML, JS, and JSON above the middleware's size threshold).
+- Compressible responses of at least 1024 bytes are gzip-compressed when the client requests gzip; the plugin also supports other negotiated encodings.
 - `/assets/*` is served with `Cache-Control: public, max-age=31536000, immutable`; `index.html` (including the SPA fallback) is `no-cache`, so deploys are picked up immediately.
 - Default port: 3000. Override with `PORT`.
 - Default database: `server/data/app.db`. Override with `DATABASE_PATH`.
@@ -135,7 +135,9 @@ Delete or replace these files together:
 Then:
 
 - Remove `NotesModule` from the imports in `server/src/app.ts`.
-- Replace the `db` provider in the app factory when you introduce a new schema.
+- Remove the Notes import, export, and entry from `server/src/schema.ts`; add your replacement schema there.
+- Update `server/drizzle.config.ts` if the replacement schema is not exported by `server/src/schema.ts`.
+- Replace the Notes-based compression test in `server/test/hosting.test.ts` with one that exercises a sufficiently large response from your replacement application.
 - Remove `server/data/` for a clean database.
 - Keep the root workspace, `client/vite.config.ts`, `server/src/db.ts`, and the static-hosting code.
 
@@ -159,7 +161,7 @@ bun install --frozen-lockfile
 bun run verify
 ```
 
-Expected: `bun run check` (format, lint, typecheck) and `bun run build` exit 0; the Notes integration tests report `8 pass`, `0 fail`.
+Expected: `bun run check` (format, lint, typecheck) and `bun run build` exit 0; the integration tests report `15 pass`, `0 fail`.
 
 Production check:
 

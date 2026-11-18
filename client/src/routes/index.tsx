@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { createNote, fetchNotes } from "@client/api";
+import { NOTE_MAX_LENGTH } from "@shared/notes.contract";
 
 export const Route = createFileRoute("/")({
   component: NotesPage,
@@ -48,7 +49,7 @@ function NotesPage() {
           value={text}
           onChange={(event) => setText(event.target.value)}
           minLength={1}
-          maxLength={200}
+          maxLength={NOTE_MAX_LENGTH}
           required
         />
         <button type="submit" disabled={create.isPending}>
@@ -59,7 +60,7 @@ function NotesPage() {
       {create.isError ? <p role="alert">{create.error.message}</p> : null}
 
       {notes.isPending ? <p>Loading notes...</p> : null}
-      {notes.isError ? <p role="alert">Could not load notes.</p> : null}
+      {notes.isError ? <p role="alert">{notes.error.message}</p> : null}
       {notes.data?.length === 0 ? <p>No notes yet.</p> : null}
 
       <ul>

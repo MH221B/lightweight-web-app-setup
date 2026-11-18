@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createApp } from "@server/app";
-import { createDb, migrateDb, type AppDatabase } from "@server/db";
+import { createDb, migrateDb } from "@server/db";
+import type { AppDatabase } from "@server/schema";
 
 let db: AppDatabase;
 let app: Awaited<ReturnType<typeof createApp>>;
@@ -82,6 +83,12 @@ describe("notes api", () => {
     });
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "Invalid JSON body" });
+  });
+
+  test("returns 413 for bodies over the limit", async () => {
+    const res = await request("/api/notes", postJson({ text: "x".repeat(1_200_000) }));
+    expect(res.status).toBe(413);
+    expect(await res.json()).toEqual({ error: "Payload too large" });
   });
 
   test("returns JSON 404 for API misses", async () => {

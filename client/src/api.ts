@@ -25,7 +25,7 @@ export async function fetchNotes(): Promise<Note[]> {
   try {
     return (await api.list()).notes;
   } catch {
-    throw new Error("Could not load notes");
+    throw new Error("Could not load notes.");
   }
 }
 
@@ -36,7 +36,7 @@ export async function createNote(text: string): Promise<Note> {
     throw new Error(
       error instanceof ORPCError && error.code === "NOTES_HTTP_ERROR"
         ? error.message
-        : "Could not save note",
+        : "Could not save note.",
     );
   }
 }

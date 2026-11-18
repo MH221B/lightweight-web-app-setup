@@ -1,7 +1,7 @@
 import { Data, Effect } from "effect";
 import { Inject, Injectable } from "@nestjs/common";
 import { desc } from "drizzle-orm";
-import type { AppDatabase } from "@server/db";
+import type { AppDatabase } from "@server/schema";
 import { notes, type Note } from "@server/notes/schema";
 
 export class NotesStorageError extends Data.TaggedError("NotesStorageError")<{

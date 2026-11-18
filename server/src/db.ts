@@ -1,16 +1,10 @@
 import { Database } from "bun:sqlite";
-import { drizzle, type BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
+import { drizzle } from "drizzle-orm/bun-sqlite";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { notes } from "@server/notes/schema";
-
-const schema = { notes };
-
-export type AppDatabase = BunSQLiteDatabase<typeof schema> & {
-  $client: Database;
-};
+import { schema, type AppDatabase } from "@server/schema";
 
 export const defaultDatabasePath = fileURLToPath(new URL("../data/app.db", import.meta.url));
 

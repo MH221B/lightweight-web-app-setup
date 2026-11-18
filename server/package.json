@@ -10,6 +10,7 @@
     "db:migrate": "bun src/db.ts"
   },
   "dependencies": {
+    "@fastify/compress": "^8",
     "@nestjs/common": "11",
     "@nestjs/core": "11",
     "@nestjs/platform-fastify": "11",
