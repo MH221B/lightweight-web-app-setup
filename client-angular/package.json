@@ -1,0 +1,36 @@
+{
+  "name": "client-angular",
+  "private": true,
+  "scripts": {
+    "ng": "node ./node_modules/@angular/cli/bin/ng.js",
+    "start": "node ./node_modules/@angular/cli/bin/ng.js serve",
+    "build": "node ./node_modules/@angular/cli/bin/ng.js build",
+    "watch": "node ./node_modules/@angular/cli/bin/ng.js build --watch --configuration development",
+    "lint": "bun ./node_modules/eslint/bin/eslint.js ."
+  },
+  "dependencies": {
+    "@angular/common": "22.3.0",
+    "@angular/compiler": "22.3.0",
+    "@angular/core": "22.3.0",
+    "@angular/forms": "22.3.0",
+    "@angular/platform-browser": "22.3.0",
+    "@angular/router": "22.3.0",
+    "@orpc/client": "1.16.2",
+    "@orpc/contract": "1.16.2",
+    "@orpc/openapi-client": "1.16.2",
+    "@tanstack/angular-query": "5.108.3",
+    "rxjs": "7.8.2",
+    "tslib": "2.9.1",
+    "zod": "3"
+  },
+  "devDependencies": {
+    "@angular/build": "22.3.0",
+    "@angular/cli": "22.3.0",
+    "@angular/compiler-cli": "22.3.0",
+    "@eslint/js": "10.0.1",
+    "angular-eslint": "22.8.0",
+    "eslint": "10.15.0",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.73.0"
+  }
+}

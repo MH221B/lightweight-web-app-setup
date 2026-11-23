@@ -3,6 +3,7 @@
   "private": true,
   "workspaces": [
     "client",
+    "client-angular",
     "server",
     "shared"
   ],
@@ -10,11 +11,14 @@
   "scripts": {
     "dev": "bun run --parallel dev:client dev:server",
     "dev:client": "bun run --filter client dev",
+    "dev:angular": "bun run --parallel dev:angular-client dev:angular-server",
+    "dev:angular-client": "bun run --filter client-angular start",
+    "dev:angular-server": "bun run --filter server dev",
     "dev:server": "bun run --filter server dev",
     "routes": "bun run --filter client routes",
-    "build": "bun run --filter client build",
+    "build": "bun run --filter client build && bun run --filter client-angular build",
     "typecheck": "bun run routes && vp check --no-fmt --no-lint",
-    "check": "bun run routes && vp check",
+    "check": "bun run routes && vp check && bun run --filter client-angular lint",
     "verify": "bun run check && bun run test && bun run build",
     "test": "bun run --filter server test",
     "db:generate": "bun run --filter server db:generate",
@@ -27,6 +31,7 @@
     "vite-plus": "1.7.0"
   },
   "overrides": {
+    "@angular/build>vite": "8.3.8",
     "vite": "npm:@voidzero-dev/vite-plus-core@1.7.0",
     "vitest": "5.1.0"
   },

@@ -2,7 +2,7 @@ import { createORPCClient, ORPCError } from "@orpc/client";
 import type { ContractRouterClient } from "@orpc/contract";
 import type { JsonifiedClient } from "@orpc/openapi-client";
 import { OpenAPILink } from "@orpc/openapi-client/fetch";
-import { notesContract } from "@shared/notes.contract";
+import { notesContract } from "./notes.contract";
 
 const link = new OpenAPILink(notesContract, {
   url: () => globalThis.location.origin,

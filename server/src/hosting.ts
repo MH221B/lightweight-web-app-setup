@@ -1,6 +1,19 @@
 import { join, relative, resolve, sep } from "node:path";
 import type { FastifyReply, FastifyRequest } from "fastify";
 
+// Build tools put a content hash in the file name. Vite keeps them under
+// assets/ (index-9f2c1a7b.js); Angular emits them at the output root
+// (main-FMDDPCTC.js). A hash segment is 8+ bare alphanumerics after a
+// separator, followed by an extension bundlers emit hashed output for.
+// Ordinary names stay no-cache: app-settings.json fails the extension
+// gate, service-worker.js fails the length gate on "worker".
+const HASHED_BUILD_FILE =
+  /[.-][A-Za-z0-9]{8,}\.(?:js|mjs|css|map|woff2?|ico|png|jpe?g|gif|webp|svg|avif)$/;
+
+function isImmutable(file: string): boolean {
+  return file.startsWith("assets/") || HASHED_BUILD_FILE.test(file);
+}
+
 export function createNotFoundHandler(options: { serveClient?: boolean; clientDist?: string }) {
   const clientDist = resolve(options.clientDist ?? resolve(import.meta.dir, "../../client/dist"));
 
@@ -24,7 +37,7 @@ export function createNotFoundHandler(options: { serveClient?: boolean; clientDi
         const file = relative(clientDist, target.name ?? "").replaceAll("\\", "/");
         reply.header(
           "Cache-Control",
-          file.startsWith("assets/") ? "public, max-age=31536000, immutable" : "no-cache",
+          isImmutable(file) ? "public, max-age=31536000, immutable" : "no-cache",
         );
         return reply
           .type(target.type || "application/octet-stream")

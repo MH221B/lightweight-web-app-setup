@@ -1,11 +1,11 @@
 flowchart TB
-  Contract[Shared contract<br/>oRPC v1 · Zod]
-  subgraph Request
+  subgraph Clients
     direction LR
-    Client[React client<br/>oRPC OpenAPI client]
-    API[NestJS controller<br/>Fastify on Bun]
-    Client -->|HTTP request| API
+    React[React client<br/>Vite+ · TanStack Router/Query]
+    Angular[Angular client<br/>Angular CLI · Signal Forms]
   end
+  Shared[Shared data layer<br/>oRPC v1 contract · api.ts]
+  API[NestJS controller<br/>Fastify on Bun]
   subgraph Storage
     direction LR
     Service[Injectable service<br/>Effect]
@@ -13,6 +13,9 @@ flowchart TB
     Service --> DB
   end
 
+  React -->|HTTP request| API
+  Angular -->|HTTP request| API
   API --> Service
-  Contract -.-> Client
-  Contract -.-> API
+  Shared -.->|types + fetch helpers| React
+  Shared -.->|types + fetch helpers| Angular
+  Shared -.->|contract| API

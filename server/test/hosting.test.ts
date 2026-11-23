@@ -44,6 +44,23 @@ describe("production hosting", () => {
     expect(response.headers["cache-control"]).toBe("public, max-age=31536000, immutable");
   });
 
+  test("hash-suffixed build files at the output root are cached immutably, lookalikes are not", async () => {
+    const response = await app.inject({ method: "GET", url: "/main-4f3a9c1b.js" });
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toContain("hashed fixture");
+    expect(response.headers["cache-control"]).toBe("public, max-age=31536000, immutable");
+
+    for (const [url, body] of [
+      ["/service-worker.js", "addEventListener"],
+      ["/app-settings.json", '"theme"'],
+    ] as const) {
+      const lookalike = await app.inject({ method: "GET", url });
+      expect(lookalike.statusCode).toBe(200);
+      expect(lookalike.body).toContain(body);
+      expect(lookalike.headers["cache-control"]).toBe("no-cache");
+    }
+  });
+
   test("malformed percent-encoding returns 404", async () => {
     const response = await app.inject({ method: "GET", url: "/%E0%A4%A" });
     expect(response.statusCode).toBe(404);

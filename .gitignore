@@ -9,3 +9,6 @@ server/data/
 *.db-shm
 
 docs/
+
+client-angular/dist/
+client-angular/.angular/

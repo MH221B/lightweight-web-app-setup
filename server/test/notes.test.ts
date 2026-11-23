@@ -146,7 +146,7 @@ describe("notes api", () => {
       value: { origin: `http://127.0.0.1:${address.port}` },
     });
     try {
-      const { createNote, fetchNotes } = await import("../../client/src/api");
+      const { createNote, fetchNotes } = await import("../../shared/api");
       const note = await createNote("  typed client  ");
       expect(note.text).toBe("typed client");
       expect((await fetchNotes()).some((item) => item.id === note.id)).toBe(true);
