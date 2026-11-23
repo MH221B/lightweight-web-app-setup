@@ -216,13 +216,15 @@ jobs:
         run: |
           set -o pipefail
           bun run test 2>&1 | tee smoke-tests.log
-          ! grep -Eq '^ *[1-9][0-9]* fail' smoke-tests.log
+          # `bun run --filter` prefixes every line with "<workspace> test: ";
+          # strip it so the reporter's summary lines start at column zero.
+          sed -E 's/^server test: //' smoke-tests.log > smoke-summary.log
+          ! grep -Eq '^ *[1-9][0-9]* fail' smoke-summary.log
           if [ "${{ matrix.db }}" = "postgres" ]; then
-            grep -Eq '^ *7 pass' smoke-tests.log
+            grep -Eq '^ *7 pass' smoke-summary.log
             # 17 gated tests + two skipped hooks per gated file.
-            grep -Eq '^ *23 skip' smoke-tests.log
-            ! grep -Eq '^ *[1-9][0-9]* fail' smoke-tests.log
+            grep -Eq '^ *23 skip' smoke-summary.log
           else
-            grep -Eq '^ *24 pass' smoke-tests.log
-            ! grep -Eq '^ *[1-9][0-9]* skip' smoke-tests.log
+            grep -Eq '^ *24 pass' smoke-summary.log
+            ! grep -Eq '^ *[1-9][0-9]* skip' smoke-summary.log
           fi
