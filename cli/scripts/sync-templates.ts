@@ -39,14 +39,23 @@ const EXCLUDED_PREFIXES = [
   "client/dist/",
   "node_modules/",
   "server/data/",
+  "server/drizzle-pg/",
   "server/src/variants/",
   "shared/variants/",
 ];
 const EXCLUDED_FILES = new Set([
   "bun.lock",
   "client/src/routeTree.gen.ts",
+  "server/test/client-dist-postgres.test.ts",
   "server/test/contract-effect.test.ts",
   "server/test/env-effect.test.ts",
+  "server/test/env-postgres-effect.test.ts",
+  "server/test/env-postgres.cases.ts",
+  "server/test/env-postgres.test.ts",
+  "server/test/hosting-postgres.test.ts",
+  "server/test/notes-postgres.test.ts",
+  "server/test/test-database.probe.ts",
+  "server/test/test-database.ts",
 ]);
 // npm cannot pack these dotted names, so the sync stores them under a leading
 // underscore and the runtime maps them back (Task 4's DOTFILES).
@@ -130,6 +139,7 @@ const README_SENTINELS: Record<string, string> = {
   Verification: "bun run verify",
   "Copying this baseline": "To start a new project",
   "Schema variants": "shared/variants/effect/notes.contract.ts",
+  "Database variants": "server/drizzle-pg/",
 };
 
 const README_SECTIONS: Record<Flavor, Array<{ heading: string; body: string | null }>> = {
@@ -214,6 +224,7 @@ bun run start
 - Default database: \`server/data/app.db\`. Override with \`DATABASE_PATH\`.`,
     },
     { heading: "Schema variants", body: null },
+    { heading: "Database variants", body: null },
     {
       heading: "Removing or renaming the Notes example",
       body: `## Removing or renaming the Notes example
@@ -376,6 +387,7 @@ $env:CLIENT_DIST = "client-angular/dist"; bun run start
 - Default database: \`server/data/app.db\`. Override with \`DATABASE_PATH\`.`,
     },
     { heading: "Schema variants", body: null },
+    { heading: "Database variants", body: null },
     {
       heading: "Removing or renaming the Notes example",
       body: `## Removing or renaming the Notes example
@@ -732,8 +744,22 @@ async function trimTemplateSharedPackage(flavor: Flavor, root: string): Promise<
   await writeJson(file, pkg);
 }
 
+async function trimTemplateServerPackage(flavor: Flavor, root: string): Promise<void> {
+  const file = join(root, "server", "package.json");
+  const where = `server/package.json (${flavor})`;
+  const pkg = await readJson<PackageJson>(file);
+  const dependencies = pkg.dependencies;
+  if (!dependencies) throw new SyncError(`${where}: dependencies is missing`);
+  if (typeof dependencies["postgres"] !== "string") {
+    throw new SyncError(`${where}: expected a postgres dependency to trim`);
+  }
+  delete dependencies["postgres"];
+  await writeJson(file, pkg);
+}
+
 async function transform(flavor: Flavor, root: string): Promise<void> {
   await trimTemplateSharedPackage(flavor, root);
+  await trimTemplateServerPackage(flavor, root);
   await editPackageJson(flavor, root);
   await editFile(root, "vite.config.ts", [...VITE_CLI_EDITS, ...VITE_LINE_EDITS[flavor]]);
   for (const removal of VITE_REMOVE_ALL[flavor]) {
@@ -793,6 +819,109 @@ async function editOverlayPackageJson(
   await writeJson(file, pkg);
 }
 
+type SchemaLib = "zod" | "effect";
+type OverlaySet = "effect-sqlite" | "zod-postgres" | "effect-postgres";
+
+const OVERLAY_SETS: OverlaySet[] = ["effect-sqlite", "zod-postgres", "effect-postgres"];
+
+const PG_REMOVALS = ["server/drizzle.config.ts", "server/drizzle/"];
+
+const PG_README_EDITS: Array<[string, string]> = [
+  [
+    "- **Data:** Effect handles storage errors; Drizzle accesses SQLite through `bun:sqlite`.",
+    "- **Data:** Effect handles storage errors; Drizzle accesses PostgreSQL through `postgres.js`.",
+  ],
+  [
+    "which calls a service backed by Drizzle and SQLite.](architecture.svg)",
+    "which calls a service backed by Drizzle and PostgreSQL.](architecture.svg)",
+  ],
+  [
+    "Server tests use `bun:test` on purpose: they exercise the NestJS/Fastify app against an in-memory `bun:sqlite` database through the checked-in Drizzle migration. `bun run test` delegates to `bun test` in `server/`.",
+    "Server tests use `bun:test` on purpose: they exercise the NestJS/Fastify app against a temporary PostgreSQL database (`mh_test_<random>`) that the suite creates on the server named by `DATABASE_URL`, applies the checked-in migrations to, and drops afterwards; this needs `CREATEDB`. Databases you keep are never migrated or mutated — the suite connects to the named database only to administer its temporary one — and abrupt termination can leave a temporary database behind (cleanup is best-effort). Without `DATABASE_URL` the PostgreSQL tests skip. `bun run test` delegates to `bun test` in `server/`.",
+  ],
+  [
+    "; the integration tests report `24 pass`, `0 fail`.",
+    "; with `DATABASE_URL` set (the role needs `CREATEDB`) the integration tests report `24 pass`, `0 fail`. Without `DATABASE_URL` the PostgreSQL tests skip: `7 pass`, `23 skip`, `0 fail`.",
+  ],
+  [
+    "- Default database: `server/data/app.db`. Override with `DATABASE_PATH`.",
+    "- Default database: the PostgreSQL database named by `DATABASE_URL` (`postgres://` or `postgresql://`).",
+  ],
+  [
+    "- `server/drizzle/` — the Notes migration history",
+    "- `server/drizzle-pg/` — the Notes migration history",
+  ],
+  [
+    "- Remove `server/data/` for a clean database.",
+    "- Drop and recreate the database named by `DATABASE_URL` for a clean slate.",
+  ],
+  // The template Layout is a sync-owned section with a hardcoded body: it has no
+  // drizzle-history bullet, and the live Layout is replaced wholesale. Add the pg
+  // history bullet by swapping the SQLite data bullet. The Removing section's own
+  // `server/drizzle/` bullet is edited just above, so both places read pg.
+  [
+    "- `server/data/` — persistent SQLite files (ignored)",
+    "- `server/drizzle-pg/` — the Notes migration history",
+  ],
+];
+
+// Two template sections describe SQLite field by field, so they are replaced
+// wholesale rather than patched line by line (replaceH2 keeps the rest of
+// the README intact and verifies the sentinel first). Arrays keep the
+// literal lines at column 1, so no accidental indentation reaches the README.
+const PG_ENVIRONMENT_SECTION = [
+  "## Environment",
+  "",
+  "The server validates its environment at boot in `server/src/env.ts` and fails fast on invalid values:",
+  "",
+  "| Variable | Default | Notes |",
+  "| --- | --- | --- |",
+  "| `PORT` | `3000` | Integer, 1-65535 |",
+  "| `DATABASE_URL` | required | `postgres://` or `postgresql://`; the server refuses to boot without it |",
+  "| `CLIENT_DIST` | `client/dist` | Client build directory; absolute, or relative to the repository root |",
+  "| `NODE_ENV` | `development` | `development`, `test`, or `production` |",
+].join("\n");
+
+const PG_DATABASE_SECTION = [
+  "## Database",
+  "",
+  "- Required: `DATABASE_URL` (`postgres://` or `postgresql://`)",
+  "- The server connects with `postgres.js` through Drizzle's `postgres-js` adapter",
+  "- Startup applies pending migrations automatically; logs show host and database name only, never credentials",
+  "- Behind a transaction-mode pooler (PgBouncer, some hosted poolers) prepared statements fail: connect through the direct port for migrations, or pass `prepare: false` to `postgres()` if the provider requires it",
+  "- Integration tests create and drop their own temporary database (`mh_test_<random>`) on the server named by `DATABASE_URL`; this needs `CREATEDB`. Databases you keep are never migrated or mutated — the tests connect to the named database only to administer their temporary one — and abrupt termination can leave a temporary database behind (cleanup is best-effort)",
+  "",
+  "Generate a migration after changing `server/src/notes/schema.ts`:",
+  "",
+  "```bash",
+  "bun run db:generate",
+  "```",
+  "",
+  "Apply migrations explicitly:",
+  "",
+  "```bash",
+  "DATABASE_URL=postgres://user:pass@localhost:5432/my_app bun run db:migrate",
+  "```",
+  "",
+  "Expected output: `Migrated localhost:5432/my_app` (the URL's credentials are never logged). The generated `server/drizzle-pg/` directory is checked in.",
+].join("\n");
+
+const PG_README_SECTIONS = [
+  { heading: "Environment", body: PG_ENVIRONMENT_SECTION, sentinel: "DATABASE_PATH" },
+  { heading: "Database", body: PG_DATABASE_SECTION, sentinel: "DATABASE_PATH" },
+];
+
+const PG_LAYOUT_EDITS: Record<SchemaLib, [string, string]> = {
+  zod: [
+    "- `server/` — NestJS/Fastify on Bun, oRPC v1, Effect, Zod, Drizzle, SQLite",
+    "- `server/` — NestJS/Fastify on Bun, oRPC v1, Effect, Zod, Drizzle, PostgreSQL",
+  ],
+  effect: [
+    "- `server/` — NestJS/Fastify on Bun, oRPC v1, Effect, Drizzle, SQLite",
+    "- `server/` — NestJS/Fastify on Bun, oRPC v1, Effect, Drizzle, PostgreSQL",
+  ],
+};
+
 const EFFECT_README_EDITS: Array<[string, string]> = [
   ["Zod validates request bodies;", "Effect Schema validates request bodies;"],
   [
@@ -801,17 +930,36 @@ const EFFECT_README_EDITS: Array<[string, string]> = [
   ],
 ];
 
-async function writeOverlayReadme(flavor: Flavor, outRoot: string): Promise<void> {
+interface OverlayReadmeOptions {
+  sections?: Array<{ heading: string; body: string; sentinel: string }>;
+  edits?: Array<[string, string]>;
+}
+
+async function writeOverlayReadme(
+  flavor: Flavor,
+  outRoot: string,
+  options: OverlayReadmeOptions = {},
+): Promise<void> {
+  const where = `README.md overlay (${flavor})`;
   let text = await readFile(join(TEMPLATES_ROOT, flavor, "README.md"), "utf8");
-  for (const [find, replacement] of EFFECT_README_EDITS) {
-    text = replaceOnce(text, find, replacement, `README.md overlay (${flavor})`);
+  for (const section of options.sections ?? []) {
+    text = replaceH2(text, section.heading, section.body, section.sentinel, where);
+  }
+  for (const [find, replacement] of options.edits ?? []) {
+    text = replaceOnce(text, find, replacement, where);
   }
   const file = join(outRoot, "README.md");
   await mkdir(dirname(file), { recursive: true });
   await writeFile(file, text);
 }
 
-async function writeOverlay(flavor: Flavor, outRoot: string): Promise<void> {
+async function writeRemovals(outRoot: string): Promise<void> {
+  const file = join(outRoot, "removals.json");
+  await mkdir(dirname(file), { recursive: true });
+  await writeFile(file, `${JSON.stringify(PG_REMOVALS, null, 2)}\n`);
+}
+
+async function writeEffectSqliteOverlay(flavor: Flavor, outRoot: string): Promise<void> {
   await writeOverlayFile(
     outRoot,
     "shared/notes.contract.ts",
@@ -854,10 +1002,189 @@ async function writeOverlay(flavor: Flavor, outRoot: string): Promise<void> {
       if (typeof dependencies["effect"] !== "string") {
         throw new SyncError("server/package.json: expected an effect dependency");
       }
+      if (typeof dependencies["postgres"] !== "string") {
+        throw new SyncError("server/package.json: expected a postgres dependency to trim");
+      }
+      delete dependencies["zod"];
+      delete dependencies["postgres"];
+    },
+  );
+  await writeOverlayReadme(flavor, outRoot, { edits: EFFECT_README_EDITS });
+}
+
+async function writePostgresOverlay(
+  flavor: Flavor,
+  set: "zod-postgres" | "effect-postgres",
+  outRoot: string,
+): Promise<void> {
+  const effect = set === "effect-postgres";
+
+  await writeOverlayReadme(flavor, outRoot, {
+    sections: PG_README_SECTIONS,
+    edits: [
+      ...(effect ? EFFECT_README_EDITS : []),
+      ...PG_README_EDITS,
+      PG_LAYOUT_EDITS[effect ? "effect" : "zod"],
+    ],
+  });
+
+  // The diagram must agree with the selected database: the overlay replaces
+  // the tree's SQLite mmd/svg pair with the PostgreSQL flavor. The SVG is a
+  // generated artifact committed beside its source in cli/scripts/assets/;
+  // regenerate it with the Pele renderer after editing the mmd.
+  await writeOverlayFile(
+    outRoot,
+    "architecture.mmd",
+    "cli/scripts/assets/architecture.postgres.mmd",
+  );
+  await writeOverlayFile(
+    outRoot,
+    "architecture.svg",
+    "cli/scripts/assets/architecture.postgres.svg",
+  );
+
+  await writeOverlayFile(outRoot, "server/src/db.ts", "server/src/variants/postgres/db.ts", [
+    ['"@server/variants/postgres/schema"', '"@server/schema"'],
+    [
+      'new URL("../../../drizzle-pg", import.meta.url)',
+      'new URL("../drizzle-pg", import.meta.url)',
+    ],
+  ]);
+  await writeOverlayFile(
+    outRoot,
+    "server/src/schema.ts",
+    "server/src/variants/postgres/schema.ts",
+    [['"@server/variants/postgres/notes/schema"', '"@server/notes/schema"']],
+  );
+  await writeOverlayFile(
+    outRoot,
+    "server/src/notes/schema.ts",
+    "server/src/variants/postgres/notes/schema.ts",
+  );
+  await writeOverlayFile(
+    outRoot,
+    "server/src/notes/notes.service.ts",
+    "server/src/variants/postgres/notes/notes.service.ts",
+    [
+      ['"@server/variants/postgres/schema"', '"@server/schema"'],
+      ['"@server/variants/postgres/notes/schema"', '"@server/notes/schema"'],
+    ],
+  );
+  await writeOverlayFile(outRoot, "server/src/index.ts", "server/src/variants/postgres/index.ts", [
+    ['"@server/variants/postgres/db"', '"@server/db"'],
+    ['"@server/variants/postgres/env"', '"@server/env"'],
+    ['"@server/variants/postgres/notes/notes.module"', '"@server/notes/notes.module"'],
+  ]);
+  await writeOverlayFile(
+    outRoot,
+    "server/src/env.ts",
+    effect ? "server/src/variants/effect-postgres/env.ts" : "server/src/variants/postgres/env.ts",
+    [['resolve(import.meta.dir, "../../../..")', 'resolve(import.meta.dir, "../..")']],
+  );
+  await writeOverlayFile(
+    outRoot,
+    "server/drizzle.config.ts",
+    "server/src/variants/postgres/drizzle.config.ts",
+    [["./src/variants/postgres/schema.ts", "./src/schema.ts"]],
+  );
+  for (const file of await listFiles(join(REPO_ROOT, "server/drizzle-pg"))) {
+    await writeOverlayFile(outRoot, `server/drizzle-pg/${file}`, `server/drizzle-pg/${file}`);
+  }
+
+  await writeOverlayFile(outRoot, "server/test/env.cases.ts", "server/test/env-postgres.cases.ts");
+  await writeOverlayFile(
+    outRoot,
+    "server/test/env.test.ts",
+    effect ? "server/test/env-postgres-effect.test.ts" : "server/test/env-postgres.test.ts",
+    [
+      [
+        effect ? '"@server/variants/effect-postgres/env"' : '"@server/variants/postgres/env"',
+        '"@server/env"',
+      ],
+      ['"./env-postgres.cases"', '"./env.cases"'],
+    ],
+  );
+
+  const testEdits: Array<[string, string]> = [
+    ['"@server/variants/postgres/db"', '"@server/db"'],
+    ['"@server/variants/postgres/notes/schema"', '"@server/notes/schema"'],
+    ['"@server/variants/postgres/notes/notes.module"', '"@server/notes/notes.module"'],
+  ];
+  await writeOverlayFile(
+    outRoot,
+    "server/test/notes.test.ts",
+    "server/test/notes-postgres.test.ts",
+    testEdits,
+  );
+  await writeOverlayFile(
+    outRoot,
+    "server/test/hosting.test.ts",
+    "server/test/hosting-postgres.test.ts",
+    testEdits,
+  );
+  await writeOverlayFile(
+    outRoot,
+    "server/test/client-dist.test.ts",
+    "server/test/client-dist-postgres.test.ts",
+    [
+      ['"@server/variants/postgres/index"', '"@server/index"'],
+      ['"@server/variants/postgres/env"', '"@server/env"'],
+    ],
+  );
+  // Shared harness; same relative import ("./test-database") in the scaffold.
+  await writeOverlayFile(outRoot, "server/test/test-database.ts", "server/test/test-database.ts");
+
+  if (effect) {
+    await writeOverlayFile(
+      outRoot,
+      "shared/notes.contract.ts",
+      "shared/variants/effect/notes.contract.ts",
+    );
+    await writeOverlayFile(
+      outRoot,
+      "server/test/contract.test.ts",
+      "server/test/contract-effect.test.ts",
+      [['"@shared/variants/effect/notes.contract"', '"@shared/notes.contract"']],
+    );
+  }
+
+  await editOverlayPackageJson(
+    outRoot,
+    "server/package.json",
+    "server/package.json",
+    (dependencies) => {
+      if (typeof dependencies["postgres"] !== "string") {
+        throw new SyncError("server/package.json: expected the postgres dependency");
+      }
+      if (!effect) return;
+      if (typeof dependencies["zod"] !== "string") {
+        throw new SyncError("server/package.json: expected a zod dependency to drop");
+      }
       delete dependencies["zod"];
     },
   );
-  await writeOverlayReadme(flavor, outRoot);
+  if (effect) {
+    await editOverlayPackageJson(
+      outRoot,
+      "shared/package.json",
+      "shared/package.json",
+      (dependencies) => {
+        if (typeof dependencies["zod"] !== "string") {
+          throw new SyncError("shared/package.json: expected a zod dependency to drop");
+        }
+        if (typeof dependencies["effect"] !== "string") {
+          throw new SyncError("shared/package.json: expected an effect dependency");
+        }
+        delete dependencies["zod"];
+      },
+    );
+  }
+  await writeRemovals(outRoot);
+}
+
+async function writeOverlaySet(flavor: Flavor, set: OverlaySet, outRoot: string): Promise<void> {
+  if (set === "effect-sqlite") return writeEffectSqliteOverlay(flavor, outRoot);
+  return writePostgresOverlay(flavor, set, outRoot);
 }
 
 async function copyTrackedFile(file: string, outRoot: string): Promise<void> {
@@ -916,11 +1243,13 @@ async function main(): Promise<void> {
     console.log(
       `synced ${flavor}: ${await countFiles(outRoot)} files -> ${relative(REPO_ROOT, outRoot)}`,
     );
-    const overlayRoot = join(OVERLAYS_ROOT, flavor);
-    await writeOverlay(flavor, overlayRoot);
-    console.log(
-      `synced ${flavor} overlay: ${await countFiles(overlayRoot)} files -> ${relative(REPO_ROOT, overlayRoot)}`,
-    );
+    for (const set of OVERLAY_SETS) {
+      const overlayRoot = join(OVERLAYS_ROOT, flavor, set);
+      await writeOverlaySet(flavor, set, overlayRoot);
+      console.log(
+        `synced ${flavor} overlay ${set}: ${await countFiles(overlayRoot)} files -> ${relative(REPO_ROOT, overlayRoot)}`,
+      );
+    }
   }
   await formatTemplates();
 }

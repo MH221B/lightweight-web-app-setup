@@ -146,7 +146,7 @@ export async function findLeftovers(
   const forbidden = [
     "lightweight-web-app-starter",
     "Lightweight web app",
-    'selector: "app-root"',
+    'selector: "app-',
     "<app-root",
     "</app-root>",
     'prefix: "app"',
@@ -231,6 +231,9 @@ export async function renameProject(options: RenameOptions): Promise<WrittenSpan
     await edit(`${clientDir}/src/app/app.ts`, [
       ['selector: "app-root"', `selector: "${prefix}-root"`],
       ["<h1>Lightweight web app</h1>", `<h1>${displayName}</h1>`],
+    ]);
+    await edit(`${clientDir}/src/app/notes/notes-page.ts`, [
+      ['selector: "app-notes-page"', `selector: "${prefix}-notes-page"`],
     ]);
     await edit(`${clientDir}/src/index.html`, [
       ["<app-root></app-root>", `<${prefix}-root></${prefix}-root>`],

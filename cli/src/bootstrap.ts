@@ -2,12 +2,14 @@ import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { delimiter, join, resolve } from "node:path";
 import { styleText } from "node:util";
+import type { DbEngine } from "./scaffold.ts";
 import type { Flavor } from "./rename.ts";
 
 export interface BootstrapOptions {
   targetDir: string;
   flavor: Flavor;
   install: boolean;
+  db: DbEngine;
 }
 
 function step(message: string): void {
@@ -42,12 +44,16 @@ export function quotePath(path: string): string {
     : `'${path.replaceAll("'", "'\\''")}'`;
 }
 
-function printManual(targetDir: string, flavor: Flavor): void {
+function printManual(targetDir: string, flavor: Flavor, db: DbEngine): void {
   console.log("");
   warn("Finish the setup manually:");
   console.log(`    cd ${quotePath(targetDir)}`);
   console.log("    bun install");
-  console.log("    bun run db:migrate");
+  if (db === "postgres") {
+    console.log("    DATABASE_URL=postgres://user:pass@localhost:5432/my_app bun run db:migrate");
+  } else {
+    console.log("    bun run db:migrate");
+  }
   console.log(`    ${devCommand(flavor)}`);
 }
 
@@ -81,25 +87,25 @@ export function resolveBun(): string | null {
 }
 
 export async function bootstrap(options: BootstrapOptions): Promise<void> {
-  const { targetDir, flavor, install } = options;
+  const { targetDir, flavor, install, db } = options;
 
   if (install) {
     const bun = resolveBun();
     if (!bun) {
       warn("bun is not on PATH. Install it from https://bun.sh and run the commands below.");
-      printManual(targetDir, flavor);
+      printManual(targetDir, flavor, db);
       return;
     }
     step("Installing dependencies");
     if (!run(bun, ["install"], targetDir).ok) {
       warn("bun install failed.");
-      printManual(targetDir, flavor);
+      printManual(targetDir, flavor, db);
       return;
     }
     step("Applying database migrations");
     if (!run(bun, ["run", "db:migrate"], targetDir).ok) {
       warn("Database migration failed.");
-      printManual(targetDir, flavor);
+      printManual(targetDir, flavor, db);
       return;
     }
   }

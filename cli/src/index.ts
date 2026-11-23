@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import pkg from "../package.json";
 import { bootstrap } from "./bootstrap.ts";
 import {
+  askDatabase,
   askDirectory,
   askFlavor,
   askProjectName,
@@ -11,13 +12,14 @@ import {
   confirmNonEmpty,
 } from "./prompts.ts";
 import { validateProjectName, type Flavor } from "./rename.ts";
-import { scaffold, type SchemaLib } from "./scaffold.ts";
+import { scaffold, type DbEngine, type SchemaLib } from "./scaffold.ts";
 
 const RECIPE = `mh-stack needs a TTY for prompts. Non-interactive usage:
   npx mh-stack --react --name my-app my-app
   npx mh-stack --angular --name my-app my-app
   npx mh-stack --react --effect --name my-app my-app
-Flags: --react | --angular, --zod | --effect, --name <name>, --no-install, --help, --version`;
+  npx mh-stack --react --postgres --name my-app my-app
+Flags: --react | --angular, --zod | --effect, --sqlite | --postgres, --name <name>, --no-install, --help, --version`;
 
 const USAGE = `Usage: mh-stack [options] [target-directory]
 
@@ -26,6 +28,8 @@ Options:
   --angular          Scaffold the Angular client (required without a TTY)
   --zod              Validate with Zod (default)
   --effect           Validate with Effect Schema
+  --sqlite           Store data in SQLite (default)
+  --postgres         Store data in PostgreSQL
   --name <name>      Project and npm package name (required without a TTY)
   --no-install       Skip bun install and the database migration
   -h, --help         Show this help
@@ -35,11 +39,13 @@ Examples:
   npx mh-stack
   npx mh-stack --react --name my-app my-app
   npx mh-stack --angular --name my-app my-app
-  npx mh-stack --react --effect --name my-app my-app`;
+  npx mh-stack --react --effect --name my-app my-app
+  npx mh-stack --react --postgres --name my-app my-app`;
 
 interface ParsedArgs {
   flavor?: Flavor;
   schema?: SchemaLib;
+  db?: DbEngine;
   name?: string;
   target?: string;
   install: boolean;
@@ -64,6 +70,10 @@ function parseArgs(argv: string[]): ParsedArgs {
       const schema: SchemaLib = arg === "--zod" ? "zod" : "effect";
       if (parsed.schema && parsed.schema !== schema) fail("Choose one of --zod or --effect.");
       parsed.schema = schema;
+    } else if (arg === "--sqlite" || arg === "--postgres") {
+      const db: DbEngine = arg === "--sqlite" ? "sqlite" : "postgres";
+      if (parsed.db && parsed.db !== db) fail("Choose one of --sqlite or --postgres.");
+      parsed.db = db;
     } else if (arg === "--name") {
       const value = argv[index + 1];
       if (!value) fail("--name needs a value.");
@@ -105,7 +115,7 @@ async function main(): Promise<void> {
   if (parsed.version) return;
 
   const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY);
-  let { flavor, name, target, schema } = parsed;
+  let { flavor, name, target, schema, db } = parsed;
   if (!flavor || !name || !target) {
     if (!interactive) fail(RECIPE);
   }
@@ -117,6 +127,7 @@ async function main(): Promise<void> {
   name ??= await askProjectName();
   flavor ??= await askFlavor();
   schema ??= interactive ? await askSchemaLibrary() : "zod";
+  db ??= interactive ? await askDatabase() : "sqlite";
   target ??= await askDirectory(name);
   if (!name || !flavor) fail(RECIPE);
 
@@ -128,8 +139,8 @@ async function main(): Promise<void> {
     if (!(await confirmNonEmpty(targetDir))) fail("Aborted.");
   }
 
-  await scaffold({ flavor, projectName: name, targetDir, schema });
-  await bootstrap({ targetDir, flavor, install: parsed.install });
+  await scaffold({ flavor, projectName: name, targetDir, schema, db });
+  await bootstrap({ targetDir, flavor, install: parsed.install, db });
 }
 
 try {

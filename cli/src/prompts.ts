@@ -1,6 +1,6 @@
 import { confirm, input, select } from "@inquirer/prompts";
 import { validateProjectName, type Flavor } from "./rename.ts";
-import type { SchemaLib } from "./scaffold.ts";
+import type { DbEngine, SchemaLib } from "./scaffold.ts";
 
 export async function askProjectName(): Promise<string> {
   return input({
@@ -31,6 +31,17 @@ export async function askSchemaLibrary(): Promise<SchemaLib> {
     choices: [
       { name: "Zod — default", value: "zod" },
       { name: "Effect Schema", value: "effect" },
+    ],
+  });
+}
+
+export async function askDatabase(): Promise<DbEngine> {
+  return select<DbEngine>({
+    message: "Database:",
+    default: "sqlite",
+    choices: [
+      { name: "SQLite — default", value: "sqlite" },
+      { name: "PostgreSQL", value: "postgres" },
     ],
   });
 }

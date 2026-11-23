@@ -7,7 +7,7 @@ A copyable Bun workspace with two client flavors — React 19 and Angular 22 —
 - **Clients:** React 19 on Vite+ with TanStack Router and Query; Angular 22 on the Angular CLI (standalone, zoneless, Signal Forms) with TanStack Angular Query.
 - **API:** NestJS controllers, modules, and services using Fastify on Bun.
 - **Shared data layer:** an oRPC v1 contract and framework-free oRPC fetch helpers in `shared/`. Zod validates request bodies; both clients and the server use the same route and response types.
-- **Data:** Effect handles storage errors; Drizzle accesses SQLite through `bun:sqlite`.
+- **Data:** Effect handles storage errors; Drizzle accesses SQLite through `bun:sqlite`. A PostgreSQL twin (`postgres.js` + Drizzle's `postgres-js` adapter) lives under `server/src/variants/postgres/` and scaffolds with `--postgres`.
 
 ![Notes request flow: the React and Angular clients share an oRPC v1 contract with the NestJS controller, which calls a service backed by Drizzle and SQLite.](architecture.svg)
 
@@ -157,6 +157,18 @@ PowerShell:
 $env:CLIENT_DIST = "client-angular/dist"; bun run start
 ```
 
+## Database variants
+
+SQLite is the default and the live application's database: `server/src/db.ts`, `server/src/schema.ts`, `server/src/notes/`, and `server/drizzle/`.
+
+The PostgreSQL twin mirrors those paths under `server/src/variants/postgres/`, with its own migrations in `server/drizzle-pg/` and env twins at `server/src/variants/postgres/env.ts` (Zod) and `server/src/variants/effect-postgres/env.ts` (Effect Schema). PostgreSQL needs `DATABASE_URL` (`postgres://` or `postgresql://`); SQLite never reads it.
+
+```bash
+DATABASE_URL=postgres://user:pass@localhost:5432/notes bun run --filter server test
+```
+
+The databases you keep are never migrated or mutated: the suites connect to the database named by `DATABASE_URL` only to administer their temporary one. Integration tests create and drop their own temporary database (`mh_test_<random>`) there; this needs `CREATEDB`. Abrupt termination can leave a temporary database behind (cleanup is best-effort). Without `DATABASE_URL` they skip. CI sets `DATABASE_URL` together with `MH_REQUIRE_POSTGRES=1` so the PostgreSQL suite runs for real. A storage change updates both databases and their shared case tables in the same change.
+
 ## Schema variants
 
 The live application validates with Zod. Effect Schema implementations ship as twins so the CLI can scaffold either library:
@@ -199,7 +211,8 @@ To rename rather than remove, replace `Notes`, `notes`, and `/api/notes` consist
 
 - `client/` — React 19, Vite+, TanStack Router and Query, oRPC OpenAPI client
 - `client-angular/` — Angular 22, Angular CLI, Signal Forms, TanStack Angular Query, oRPC OpenAPI client
-- `server/` — NestJS/Fastify on Bun, oRPC v1, Effect, Zod, Drizzle, SQLite
+- `server/` — NestJS/Fastify on Bun, oRPC v1, Effect, Zod, Drizzle, SQLite (PostgreSQL twins under `server/src/variants/postgres/`)
+- `server/drizzle-pg/` — the PostgreSQL twin's committed migration history
 - `shared/` — the oRPC v1 API contract and the framework-free oRPC client both flavors import
 - `server/data/` — persistent SQLite files (ignored)
 
@@ -214,7 +227,7 @@ bun install --frozen-lockfile
 bun run verify
 ```
 
-Expected: `bun run check` (format, lint, typecheck, angular-eslint) and `bun run build` (React and Angular) exit 0; the integration tests report `31 pass`, `0 fail`.
+Expected: `bun run check` (format, lint, typecheck, angular-eslint) and `bun run build` (React and Angular) exit 0; the integration tests report `37 pass`, `23 skip`, `0 fail` locally (the 17 gated tests plus two skipped hooks per gated file; Bun 1.4.4 counts a skipped suite's hooks as skips), and `54 pass` when `DATABASE_URL` is set (the role needs `CREATEDB`).
 
 Production check:
 

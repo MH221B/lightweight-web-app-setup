@@ -1,0 +1,21 @@
+flowchart TB
+  subgraph Clients
+    direction LR
+    React[React client<br/>Vite+ · TanStack Router/Query]
+    Angular[Angular client<br/>Angular CLI · Signal Forms]
+  end
+  Shared[Shared data layer<br/>oRPC v1 contract · api.ts]
+  API[NestJS controller<br/>Fastify on Bun]
+  subgraph Storage
+    direction LR
+    Service[Injectable service<br/>Effect]
+    DB[(PostgreSQL<br/>Drizzle · postgres.js)]
+    Service --> DB
+  end
+
+  React -->|HTTP request| API
+  Angular -->|HTTP request| API
+  API --> Service
+  Shared -.->|types + fetch helpers| React
+  Shared -.->|types + fetch helpers| Angular
+  Shared -.->|contract| API

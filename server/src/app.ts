@@ -6,6 +6,7 @@ import {
   Module,
   type ArgumentsHost,
   type ExceptionFilter,
+  type Type,
 } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import { FastifyAdapter, type NestFastifyApplication } from "@nestjs/platform-fastify";
@@ -14,7 +15,6 @@ import compress from "@fastify/compress";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Http2ServerRequest, Http2ServerResponse } from "node:http2";
 import type { FastifyReply, FastifyRequest } from "fastify";
-import type { AppDatabase } from "@server/schema";
 import { createNotFoundHandler } from "@server/hosting";
 import { NotesModule } from "@server/notes/notes.module";
 
@@ -30,8 +30,8 @@ const statusOf = (error: unknown) => {
 };
 
 export async function createApp(
-  db: AppDatabase,
-  options: { serveClient?: boolean; clientDist?: string } = {},
+  db: object,
+  options: { serveClient?: boolean; clientDist?: string; notesModule?: Type<unknown> } = {},
 ) {
   const notFound = createNotFoundHandler(options);
   @Global()
@@ -46,7 +46,7 @@ export async function createApp(
         },
       }),
       DatabaseModule,
-      NotesModule,
+      options.notesModule ?? NotesModule,
     ],
   })
   class AppModule {}
