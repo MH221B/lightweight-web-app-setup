@@ -4,8 +4,6 @@ import { parseEnv } from "@server/variants/postgres/env";
 import { NotesModule } from "@server/variants/postgres/notes/notes.module";
 
 export async function start(env = parseEnv()) {
-  // createDb asserts current_database() before returning: the boot path is
-  // guarded before the first migration, exactly like every suite.
   const db = await createDb(env.DATABASE_URL);
   try {
     await migrateDb(db);

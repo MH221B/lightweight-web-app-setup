@@ -23,7 +23,7 @@ export default defineConfig({
       "client/.tanstack/**",
       "server/data/**",
       "server/drizzle/**",
-      "docs/**",
+      "server/drizzle-pg/**",
     ],
   },
   fmt: {
@@ -37,7 +37,7 @@ export default defineConfig({
       "client/.tanstack/**",
       "server/data/**",
       "server/drizzle/**",
-      "docs/**",
+      "server/drizzle-pg/**",
     ],
   },
 });

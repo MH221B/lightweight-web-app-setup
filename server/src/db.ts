@@ -5,12 +5,13 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { schema, type AppDatabase } from "@server/schema";
+import { parseEnv } from "@server/env";
 
 export const defaultDatabasePath = fileURLToPath(new URL("../data/app.db", import.meta.url));
 
 export const migrationsFolder = fileURLToPath(new URL("../drizzle", import.meta.url));
 
-export function createDb(path = process.env.DATABASE_PATH ?? defaultDatabasePath): AppDatabase {
+export function createDb(path: string): AppDatabase {
   if (path !== ":memory:") {
     mkdirSync(dirname(path), { recursive: true });
   }
@@ -32,8 +33,9 @@ export function migrateDb(db: AppDatabase, folder = migrationsFolder): void {
 }
 
 if (import.meta.main) {
-  const db = createDb();
+  const path = parseEnv().DATABASE_PATH ?? defaultDatabasePath;
+  const db = createDb(path);
   migrateDb(db);
-  console.log(`Migrated ${process.env.DATABASE_PATH ?? defaultDatabasePath}`);
+  console.log(`Migrated ${path}`);
   db.$client.close();
 }

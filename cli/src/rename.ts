@@ -1,13 +1,14 @@
-import { readdir, readFile, writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
+import { CLIENT_DIR, type Flavor } from "./template-config.ts";
+import { walkFiles } from "./walk.ts";
 
-export type Flavor = "react" | "angular";
-export type WrittenSpans = Map<string, Array<[number, number]>>;
+export type { Flavor } from "./template-config.ts";
+type WrittenSpans = Map<string, Array<[number, number]>>;
 
 interface PackageJson {
   name?: string;
   scripts?: Record<string, string>;
-  overrides?: Record<string, string>;
   [key: string]: unknown;
 }
 
@@ -23,11 +24,6 @@ interface AngularProject {
   };
   [key: string]: unknown;
 }
-
-const CLIENT_DIR: Record<Flavor, string> = {
-  react: "client",
-  angular: "client-angular",
-};
 
 export function validateProjectName(name: string): string | null {
   if (name.length === 0) return "Project name is required.";
@@ -50,12 +46,12 @@ export function humanize(projectName: string): string {
     .join(" ");
 }
 
-export function selectorPrefix(projectName: string): string {
+function selectorPrefix(projectName: string): string {
   const prefix = projectName.replace(/^[^a-z]+/, "");
   return prefix.length > 0 ? prefix : "app";
 }
 
-export function clientPackageName(projectName: string): string {
+function clientPackageName(projectName: string): string {
   return `${projectName}-client`;
 }
 
@@ -115,17 +111,6 @@ function rewriteProjectReferences(value: unknown, from: string, to: string): unk
   return value;
 }
 
-async function listFiles(dir: string, base = ""): Promise<string[]> {
-  const files: string[] = [];
-  for (const entry of await readdir(dir, { withFileTypes: true })) {
-    if (entry.name === ".git" || entry.name === "node_modules") continue;
-    const path = base === "" ? entry.name : `${base}/${entry.name}`;
-    if (entry.isDirectory()) files.push(...(await listFiles(join(dir, entry.name), path)));
-    else if (entry.isFile()) files.push(path);
-  }
-  return files;
-}
-
 function occurrences(text: string, token: string): Array<[number, number]> {
   const spans: Array<[number, number]> = [];
   let index = text.indexOf(token);
@@ -150,12 +135,13 @@ export async function findLeftovers(
     "<app-root",
     "</app-root>",
     'prefix: "app"',
-    ...(flavor === "react"
-      ? ["client-angular", "@angular/"]
-      : ["@client/", "routeTree.gen.ts", "--filter client "]),
+    "--filter client ",
+    "/variants/",
+    ...(flavor === "react" ? ["client-angular", "@angular/"] : ["@client/", "routeTree.gen.ts"]),
   ];
   const hits: string[] = [];
-  for (const file of files ?? (await listFiles(targetDir))) {
+  for (const file of files ??
+    (await walkFiles(targetDir, "", (path) => /(?:^|\/)(?:\.git|node_modules)$/.test(path)))) {
     const text = await readFile(join(targetDir, file), "utf8");
     const used = writtenSpans.get(file) ?? [];
     for (const token of forbidden) {
@@ -262,7 +248,6 @@ export async function renameProject(options: RenameOptions): Promise<WrittenSpan
     }
     spans.set("README.md", await editText(readmePath, edits));
   }
-  // JSON is rewritten structurally. Record only the fields that were changed.
   for (const path of [
     "package.json",
     `${clientDir}/package.json`,

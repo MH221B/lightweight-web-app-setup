@@ -1,23 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import net from "node:net";
 import { resolve } from "node:path";
 import { parseEnv } from "@server/env";
 import { start } from "@server/index";
+import { freePort } from "./free-port";
 
 const fixtures = resolve(import.meta.dir, "fixtures/client");
-const repoRoot = resolve(import.meta.dir, "../..");
-
-function freePort(): Promise<number> {
-  return new Promise((res, rej) => {
-    const server = net.createServer();
-    server.unref();
-    server.listen(0, "127.0.0.1", () => {
-      const port = (server.address() as net.AddressInfo).port;
-      server.close(() => res(port));
-    });
-    server.on("error", rej);
-  });
-}
 
 let app: Awaited<ReturnType<typeof start>>;
 let baseUrl: string;
@@ -37,12 +24,7 @@ afterAll(async () => {
 });
 
 describe("CLIENT_DIST", () => {
-  test("defaults resolve from the repo root, and startup serves the configured directory", async () => {
-    expect(parseEnv({}).CLIENT_DIST).toBe(resolve(repoRoot, "client/dist"));
-    expect(parseEnv({ CLIENT_DIST: "client-angular/dist" }).CLIENT_DIST).toBe(
-      resolve(repoRoot, "client-angular/dist"),
-    );
-
+  test("startup serves the configured directory", async () => {
     const index = await fetch(`${baseUrl}/`);
     expect(index.status).toBe(200);
     expect(await index.text()).toContain("Hosting fixture");

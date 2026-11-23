@@ -3,6 +3,8 @@ import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { fileURLToPath } from "node:url";
 import postgres from "postgres";
 import { schema, type AppDatabase } from "@server/variants/postgres/schema";
+import { databaseName } from "../shared/database-url";
+import { parseEnv } from "@server/variants/postgres/env";
 
 export const migrationsFolder = fileURLToPath(new URL("../../../drizzle-pg", import.meta.url));
 
@@ -16,23 +18,9 @@ export function describeDatabaseUrl(value: string): string {
   }
 }
 
-/**
- * The database the URL names: the path, or postgres.js's default (the login
- * role) when the URL carries no path. A `database` query parameter is
- * deliberately ignored here: it overrides the path in postgres.js, so the
- * guard below compares the server's answer against the path and refuses the
- * contradictory URL instead of trusting either half.
- */
-function expectedDatabase(url: URL): string {
-  const fromPath = url.pathname.replace(/^\//, "");
-  if (fromPath) return decodeURIComponent(fromPath);
-  if (url.username) return decodeURIComponent(url.username);
-  throw new Error("DATABASE_URL must name a database");
-}
-
-export async function createDb(url = process.env.DATABASE_URL): Promise<AppDatabase> {
+export async function createDb(url: string): Promise<AppDatabase> {
   if (!url) throw new Error("DATABASE_URL is required for the postgres database");
-  const expected = expectedDatabase(new URL(url));
+  const expected = databaseName(new URL(url));
   const client = postgres(url);
   const db: AppDatabase = drizzle(client, { schema });
   // Guard by construction: no caller can migrate or query this client
@@ -65,8 +53,9 @@ export async function migrateDb(db: AppDatabase, folder = migrationsFolder): Pro
 }
 
 if (import.meta.main) {
-  const db = await createDb();
+  const { DATABASE_URL } = parseEnv();
+  const db = await createDb(DATABASE_URL);
   await migrateDb(db);
-  console.log(`Migrated ${describeDatabaseUrl(process.env.DATABASE_URL ?? "")}`);
+  console.log(`Migrated ${describeDatabaseUrl(DATABASE_URL)}`);
   await db.$client.end({ timeout: 5 });
 }

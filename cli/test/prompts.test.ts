@@ -2,7 +2,7 @@ import { expect, mock, test } from "bun:test";
 
 test("database prompt offers SQLite by default and PostgreSQL", async () => {
   let captured: Record<string, unknown> = {};
-  mock.module("@inquirer/prompts", () => ({
+  await mock.module("@inquirer/prompts", () => ({
     select: async (config: Record<string, unknown>) => {
       captured = config;
       return "postgres";
@@ -12,7 +12,7 @@ test("database prompt offers SQLite by default and PostgreSQL", async () => {
   }));
 
   const { askDatabase } = await import("../src/prompts.ts");
-  await expect(askDatabase()).resolves.toBe("postgres");
+  await askDatabase();
 
   expect(captured["message"]).toBe("Database:");
   expect(captured["default"]).toBe("sqlite");

@@ -1,31 +1,17 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, test } from "bun:test";
 import { gunzipSync } from "node:zlib";
 import { createApp } from "@server/app";
 import { createDb, migrateDb } from "@server/variants/postgres/db";
 import { NotesModule } from "@server/variants/postgres/notes/notes.module";
 import { notes } from "@server/variants/postgres/notes/schema";
 import {
-  closeAndDrop,
-  CREATEDB_NOTICE,
-  hasCreateDatabasePrivilege,
+  installSuiteCleanup,
   openTestDatabase,
+  postgresCapability,
   type TestDatabase,
 } from "./test-database";
 
-const databaseUrl = process.env.DATABASE_URL ?? "";
-const required = process.env.MH_REQUIRE_POSTGRES === "1";
-
-if (required && !databaseUrl) throw new Error("MH_REQUIRE_POSTGRES=1 requires DATABASE_URL");
-if (!databaseUrl) console.log("! DATABASE_URL is not set: skipping the postgres integration tests");
-
-// Read-only skip decision: nothing is created at module scope.
-const canProvision = databaseUrl !== "" && (await hasCreateDatabasePrivilege(databaseUrl));
-// Both skip conditions become failures under the required flag; the
-// missing URL already threw above, this is the missing-CREATEDB half.
-if (required && databaseUrl !== "" && !canProvision) {
-  throw new Error("MH_REQUIRE_POSTGRES=1 requires a DATABASE_URL role with CREATEDB");
-}
-if (databaseUrl !== "" && !canProvision) console.log(CREATEDB_NOTICE);
+const { databaseUrl, required, canProvision } = await postgresCapability();
 
 describe.skipIf(!canProvision)("production hosting (postgres)", () => {
   let database: TestDatabase;
@@ -36,7 +22,6 @@ describe.skipIf(!canProvision)("production hosting (postgres)", () => {
     const opened = await openTestDatabase(databaseUrl, required);
     if (!opened) throw new Error("DATABASE_URL role lost CREATEDB after the capability check");
     database = opened;
-    // The route is asserted inside createDb, before any migration or query.
     db = await createDb(database.url);
     await migrateDb(db);
     app = await createApp(db, {
@@ -46,20 +31,17 @@ describe.skipIf(!canProvision)("production hosting (postgres)", () => {
     });
   });
 
-  afterAll(async () => {
-    // The suite's real cleanup: close the app and the pool, then drop even
-    // if a close throws. When openTestDatabase itself threw there is
-    // nothing to close or drop.
-    if (!database) return;
-    await closeAndDrop(database, [
+  installSuiteCleanup(
+    () => database,
+    () => [
       async () => {
         if (app) await app.close();
       },
       async () => {
         if (db) await db.$client.end({ timeout: 5 });
       },
-    ]);
-  });
+    ],
+  );
 
   test("API misses stay JSON 404s when the client is served", async () => {
     for (const url of ["/api", "/api/unknown"]) {

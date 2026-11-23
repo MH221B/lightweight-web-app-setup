@@ -1,17 +1,15 @@
 import { randomUUID } from "node:crypto";
-import { appendFile } from "node:fs/promises";
+import { appendFile, readFile } from "node:fs/promises";
 import postgres from "postgres";
+import { afterAll } from "bun:test";
 
 export interface TestDatabase {
-  /** Connection URL for the temporary database; pass it to createDb. */
   url: string;
-  /** The generated name, for messages, the guard, and owned-names checks. */
   name: string;
   /** Drop the database. Call only after every client on `url` is closed. */
   drop(): Promise<void>;
 }
 
-/** Raised only by the CREATE DATABASE step, so openTestDatabase can classify it. */
 export class CreateDatabaseError extends Error {
   constructor(
     readonly database: string,
@@ -26,6 +24,29 @@ export const CREATEDB_NOTICE =
   "! DATABASE_URL role lacks CREATEDB: skipping the postgres integration tests";
 const NAME = /^mh_test_[0-9a-f]{12}$/;
 
+export async function postgresCapability() {
+  const databaseUrl = process.env.DATABASE_URL ?? "";
+  const required = process.env.MH_REQUIRE_POSTGRES === "1";
+  if (required && !databaseUrl) throw new Error("MH_REQUIRE_POSTGRES=1 requires DATABASE_URL");
+  if (!databaseUrl)
+    console.log("! DATABASE_URL is not set: skipping the postgres integration tests");
+  const canProvision = databaseUrl !== "" && (await hasCreateDatabasePrivilege(databaseUrl));
+  if (required && databaseUrl !== "" && !canProvision)
+    throw new Error("MH_REQUIRE_POSTGRES=1 requires a DATABASE_URL role with CREATEDB");
+  if (databaseUrl !== "" && !canProvision) console.log(CREATEDB_NOTICE);
+  return { databaseUrl, required, canProvision };
+}
+
+export function installSuiteCleanup(
+  getDatabase: () => TestDatabase | undefined,
+  closers: () => ReadonlyArray<() => PromiseLike<unknown>>,
+): void {
+  afterAll(async () => {
+    const database = getDatabase();
+    if (database) await closeAndDrop(database, closers());
+  });
+}
+
 function connect(url: string) {
   return postgres(url, { max: 1, onnotice: () => {} });
 }
@@ -39,7 +60,7 @@ function connect(url: string) {
  */
 export function temporaryDatabaseUrl(base: string, name: string): string {
   const url = new URL(base);
-  for (const key of [...url.searchParams.keys()]) {
+  for (const key of new Set(url.searchParams.keys())) {
     if (key.toLowerCase() === "database") url.searchParams.delete(key);
   }
   url.pathname = `/${name}`;
@@ -50,7 +71,6 @@ interface QueryRunner {
   unsafe(query: string): PromiseLike<unknown>;
 }
 
-/** Refuse to run when the client is not connected to the temporary database. */
 export async function assertCurrentDatabase(client: QueryRunner, expected: string): Promise<void> {
   const rows = (await client.unsafe("select current_database() as current_database")) as
     | Array<{ current_database?: string }>
@@ -144,9 +164,10 @@ export async function createTestDatabase(base: string): Promise<TestDatabase> {
     return { name, url, drop: () => dropDatabase(base, name) };
   } catch (error) {
     await admin.end({ timeout: 5 }).catch(() => {});
-    await dropDatabase(base, name).catch(() => {
+    await dropDatabase(base, name).catch((dropError: unknown) => {
       throw new Error(
         `temporary database ${name} exists but could not be dropped; drop it manually: drop database "${name}"`,
+        { cause: dropError },
       );
     });
     throw error;
@@ -163,6 +184,24 @@ export async function createTestDatabase(base: string): Promise<TestDatabase> {
 export async function recordOwnedDatabase(name: string): Promise<void> {
   const file = process.env.MH_TEST_DB_NAMES_FILE;
   if (file) await appendFile(file, `${name}\n`);
+}
+
+export async function readOwnedNames(file: string): Promise<string[]> {
+  let text: string;
+  try {
+    text = await readFile(file, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
+  return [
+    ...new Set(
+      text
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean),
+    ),
+  ];
 }
 
 /**

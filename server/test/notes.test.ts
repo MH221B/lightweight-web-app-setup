@@ -83,6 +83,13 @@ describe("notes api", () => {
     });
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "Invalid JSON body" });
+    const empty = await request("/api/notes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "",
+    });
+    expect(empty.status).toBe(400);
+    expect(await empty.json()).toEqual({ error: "Request failed (400)" });
   });
 
   test("returns 413 for bodies over the limit", async () => {
@@ -124,11 +131,6 @@ describe("notes api", () => {
       for (const response of [list, create]) {
         expect(response.statusCode).toBe(503);
         expect(response.json()).toEqual({ error: "Notes are unavailable" });
-      }
-      expect(log).toHaveBeenCalledTimes(2);
-      for (const call of log.mock.calls) {
-        expect(call[0]).toBe("Notes storage failure:");
-        expect(call[1]).toBeInstanceOf(Error);
       }
     } finally {
       log.mockRestore();

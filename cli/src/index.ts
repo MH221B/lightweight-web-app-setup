@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 import { readdir, stat } from "node:fs/promises";
 import { resolve } from "node:path";
+import { styleText } from "node:util";
 import pkg from "../package.json";
 import { bootstrap } from "./bootstrap.ts";
+import { RECIPE, USAGE } from "./options.ts";
 import {
   askDatabase,
   askDirectory,
@@ -13,34 +15,6 @@ import {
 } from "./prompts.ts";
 import { validateProjectName, type Flavor } from "./rename.ts";
 import { scaffold, type DbEngine, type SchemaLib } from "./scaffold.ts";
-
-const RECIPE = `mh-stack needs a TTY for prompts. Non-interactive usage:
-  npx mh-stack --react --name my-app my-app
-  npx mh-stack --angular --name my-app my-app
-  npx mh-stack --react --effect --name my-app my-app
-  npx mh-stack --react --postgres --name my-app my-app
-Flags: --react | --angular, --zod | --effect, --sqlite | --postgres, --name <name>, --no-install, --help, --version`;
-
-const USAGE = `Usage: mh-stack [options] [target-directory]
-
-Options:
-  --react            Scaffold the React client (required without a TTY)
-  --angular          Scaffold the Angular client (required without a TTY)
-  --zod              Validate with Zod (default)
-  --effect           Validate with Effect Schema
-  --sqlite           Store data in SQLite (default)
-  --postgres         Store data in PostgreSQL
-  --name <name>      Project and npm package name (required without a TTY)
-  --no-install       Skip bun install and the database migration
-  -h, --help         Show this help
-  -v, --version      Show the version
-
-Examples:
-  npx mh-stack
-  npx mh-stack --react --name my-app my-app
-  npx mh-stack --angular --name my-app my-app
-  npx mh-stack --react --effect --name my-app my-app
-  npx mh-stack --react --postgres --name my-app my-app`;
 
 interface ParsedArgs {
   flavor?: Flavor;
@@ -129,7 +103,6 @@ async function main(): Promise<void> {
   schema ??= interactive ? await askSchemaLibrary() : "zod";
   db ??= interactive ? await askDatabase() : "sqlite";
   target ??= await askDirectory(name);
-  if (!name || !flavor) fail(RECIPE);
 
   const targetDir = resolve(target);
   if (await isNonEmptyDirectory(targetDir)) {
@@ -139,7 +112,10 @@ async function main(): Promise<void> {
     if (!(await confirmNonEmpty(targetDir))) fail("Aborted.");
   }
 
-  await scaffold({ flavor, projectName: name, targetDir, schema, db });
+  const result = await scaffold({ flavor, projectName: name, targetDir, schema, db });
+  for (const path of result.skipped) {
+    console.log(`${styleText("yellow", "!")} skipped existing file: ${path}`);
+  }
   await bootstrap({ targetDir, flavor, install: parsed.install, db });
 }
 

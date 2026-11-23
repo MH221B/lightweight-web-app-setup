@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { NOTE_MAX_LENGTH } from "@shared/notes.contract";
 
 interface StandardValidation {
   value?: unknown;
@@ -40,11 +39,11 @@ export function describeContractCases(subject: ContractSubject): void {
       }
     });
 
-    test("enforces the shared NOTE_MAX_LENGTH bound", () => {
-      expect(checkInput({ text: "x".repeat(NOTE_MAX_LENGTH) })).toEqual({
-        text: "x".repeat(NOTE_MAX_LENGTH),
+    test("enforces the 200-character bound", () => {
+      expect(checkInput({ text: "x".repeat(200) })).toEqual({
+        text: "x".repeat(200),
       });
-      expect(() => checkInput({ text: "x".repeat(NOTE_MAX_LENGTH + 1) })).toThrow();
+      expect(() => checkInput({ text: "x".repeat(201) })).toThrow();
     });
 
     test("decodes the create output", () => {

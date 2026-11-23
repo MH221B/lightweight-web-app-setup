@@ -1,19 +1,21 @@
 import { randomUUID } from "node:crypto";
-import { readFile, rm } from "node:fs/promises";
-import net from "node:net";
+import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import postgres from "postgres";
 import { createDb, migrateDb } from "@server/variants/postgres/db";
 import { parseEnv } from "@server/variants/postgres/env";
 import { start } from "@server/variants/postgres/index";
+import { freePort } from "./free-port";
 import {
   assertCurrentDatabase,
   closeAndDrop,
   createTestDatabase,
+  CreateDatabaseError,
   hasCreateDatabasePrivilege,
   openTestDatabase,
   recordOwnedDatabase,
+  readOwnedNames,
   temporaryDatabaseUrl,
 } from "./test-database";
 
@@ -37,26 +39,10 @@ const keptName = `mh_probe_kept_${suffix}`;
 const keptUrl = temporaryDatabaseUrl(base, keptName);
 
 function urlFor(user: string, password: string, database: string): string {
-  const url = new URL(base);
+  const url = new URL(temporaryDatabaseUrl(base, database));
   url.username = user;
   url.password = password;
-  url.pathname = `/${database}`;
-  for (const key of [...url.searchParams.keys()]) {
-    if (key.toLowerCase() === "database") url.searchParams.delete(key);
-  }
   return url.toString();
-}
-
-function freePort(): Promise<number> {
-  return new Promise((res, rej) => {
-    const server = net.createServer();
-    server.unref();
-    server.listen(0, "127.0.0.1", () => {
-      const port = (server.address() as net.AddressInfo).port;
-      server.close(() => res(port));
-    });
-    server.on("error", rej);
-  });
 }
 
 async function exists(name: string): Promise<boolean> {
@@ -68,15 +54,18 @@ async function exists(name: string): Promise<boolean> {
 }
 
 async function ownedNames(): Promise<string[]> {
-  const text = await readFile(ledger, "utf8").catch(() => "");
-  return [
-    ...new Set(
-      text
-        .split("\n")
-        .map((line) => line.trim())
-        .filter(Boolean),
-    ),
-  ];
+  return readOwnedNames(ledger);
+}
+
+function hasErrorCode(error: unknown, code: string): boolean {
+  const seen = new Set<unknown>();
+  while (typeof error === "object" && error !== null && !seen.has(error)) {
+    seen.add(error);
+    const current = error as { code?: unknown; cause?: unknown };
+    if (current.code === code) return true;
+    error = current.cause;
+  }
+  return false;
 }
 
 async function stillPresent(names: string[]): Promise<string[]> {
@@ -98,8 +87,6 @@ async function main(): Promise<void> {
     )[0]?.su === true;
 
   await admin.unsafe(`create database "${keptName}"`);
-  // Probe-created directly, but recorded through the same ledger API so the
-  // final assertion covers it too.
   await recordOwnedDatabase(keptName);
   const kept = postgres(keptUrl, { max: 1, onnotice: () => {} });
   try {
@@ -171,14 +158,19 @@ async function main(): Promise<void> {
         }
         const recordedBefore = (await ownedNames()).length;
         const skipped = await openTestDatabase(restricted, false);
-        let requiredThrew = false;
+        let requiredError: unknown;
         try {
           await openTestDatabase(restricted, true);
-        } catch {
-          requiredThrew = true;
+        } catch (error) {
+          requiredError = error;
         }
         const recordedAfter = (await ownedNames()).length;
-        if (skipped !== null || !requiredThrew || recordedAfter !== recordedBefore) {
+        if (
+          skipped !== null ||
+          !(requiredError instanceof CreateDatabaseError) ||
+          !hasErrorCode(requiredError.detail, "42501") ||
+          recordedAfter !== recordedBefore
+        ) {
           throw new Error("creation failure did not skip, throw when required, or record nothing");
         }
         console.log("creation-failure skip=null required=throw recorded=0");
@@ -190,23 +182,24 @@ async function main(): Promise<void> {
       console.log("skip: creation-failure needs a superuser role to create a restricted login");
     }
 
-    // 4. A failed migration runs the suite's real afterAll cleanup.
+    // 4. A failed migration runs the cleanup helper used by the suites.
     {
       const temporary = await createTestDatabase(base);
       const db = await createDb(temporary.url);
       try {
         await db.$client.unsafe('create table "notes" (bogus int)');
-        let threw = false;
+        let migrationError: unknown;
         try {
           await migrateDb(db);
-        } catch {
-          threw = true;
+        } catch (error) {
+          migrationError = error;
         }
-        if (!threw) {
-          throw new Error("expected the conflicting notes table to fail the migration");
+        if (!hasErrorCode(migrationError, "42P07")) {
+          throw new Error("expected duplicate-table error 42P07 from the migration", {
+            cause: migrationError,
+          });
         }
       } finally {
-        // Exactly what the suites' afterAll calls.
         await closeAndDrop(temporary, [() => db.$client.end({ timeout: 5 })]);
       }
       if (await exists(temporary.name)) throw new Error("migration-failure cleanup failed");
@@ -226,7 +219,7 @@ async function main(): Promise<void> {
       } finally {
         await seed.$client.end({ timeout: 5 });
       }
-      let threw = false;
+      let startupError: unknown;
       try {
         const booted = await start(
           parseEnv({
@@ -238,12 +231,14 @@ async function main(): Promise<void> {
         // Not expected; close cleanly so the assertion below is the signal.
         await booted.app.close();
         await booted.db.$client.end({ timeout: 5 });
-      } catch {
-        threw = true;
+      } catch (error) {
+        startupError = error;
       }
-      // Exactly what client-dist's beforeAll catch calls on a boot failure.
       await temporary.drop();
-      if (!threw) throw new Error("expected the conflicting notes table to fail startup");
+      if (!hasErrorCode(startupError, "42P07"))
+        throw new Error("expected duplicate-table error 42P07 from startup", {
+          cause: startupError,
+        });
       if (await exists(temporary.name)) throw new Error("startup-failure cleanup failed");
       console.log("startup-failure dropped=true");
     }
@@ -266,7 +261,6 @@ async function main(): Promise<void> {
           throw simulated;
         };
         try {
-          // The suites' afterAll: the throwing closer must not skip the drop.
           await closeAndDrop(temporary, [() => db.$client.end({ timeout: 5 })]);
         } catch (error) {
           closeError = error;
@@ -311,7 +305,6 @@ try {
 } finally {
   await admin.unsafe(`drop database if exists "${keptName}"`).catch(() => {});
 }
-// Exactly the databases this run recorded, never the server's whole set.
 const recorded = await ownedNames();
 const remaining = await stillPresent(recorded);
 console.log(`owned-names=${recorded.length} remaining=${remaining.length}`);

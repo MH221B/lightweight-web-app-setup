@@ -44,13 +44,19 @@ export function quotePath(path: string): string {
     : `'${path.replaceAll("'", "'\\''")}'`;
 }
 
+function postgresMigrationCommand(platform: NodeJS.Platform = process.platform): string {
+  return platform === "win32"
+    ? '$env:DATABASE_URL = "postgres://user:pass@localhost:5432/my_app"; bun run db:migrate'
+    : "DATABASE_URL=postgres://user:pass@localhost:5432/my_app bun run db:migrate";
+}
+
 function printManual(targetDir: string, flavor: Flavor, db: DbEngine): void {
   console.log("");
   warn("Finish the setup manually:");
   console.log(`    cd ${quotePath(targetDir)}`);
   console.log("    bun install");
   if (db === "postgres") {
-    console.log("    DATABASE_URL=postgres://user:pass@localhost:5432/my_app bun run db:migrate");
+    console.log(`    ${postgresMigrationCommand()}`);
   } else {
     console.log("    bun run db:migrate");
   }
@@ -110,6 +116,12 @@ export async function bootstrap(options: BootstrapOptions): Promise<void> {
     }
   }
 
+  if (!install && db === "postgres") {
+    warn("Set DATABASE_URL and apply migrations after installing dependencies:");
+    console.log(`    cd ${quotePath(targetDir)}`);
+    console.log("    bun install");
+    console.log(`    ${postgresMigrationCommand()}`);
+  }
   console.log("");
   console.log(styleText("green", "Done."));
   console.log(`    cd ${quotePath(targetDir)}`);

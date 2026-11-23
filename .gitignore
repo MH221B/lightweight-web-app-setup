@@ -8,8 +8,6 @@ server/data/
 *.db-wal
 *.db-shm
 
-docs/
-
 client-angular/dist/
 client-angular/.angular/
 

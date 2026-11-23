@@ -35,10 +35,9 @@ export function describeEnvCases(name: string, parseEnv: ParseEnv): void {
       });
     });
 
-    test("resolves a relative CLIENT_DIST from the repository root", () => {
-      expect(parseEnv({ CLIENT_DIST: "client/dist" }).CLIENT_DIST).toBe(
-        resolve(repoRoot, "client/dist"),
-      );
+    test("preserves an absolute CLIENT_DIST", () => {
+      const absolute = resolve(repoRoot, "custom/dist");
+      expect(parseEnv({ CLIENT_DIST: absolute }).CLIENT_DIST).toBe(absolute);
     });
 
     test("rejects invalid values", () => {

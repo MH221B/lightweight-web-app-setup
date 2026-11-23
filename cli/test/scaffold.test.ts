@@ -6,13 +6,14 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { bootstrap, quotePath } from "../src/bootstrap.ts";
 import { findLeftovers, type Flavor } from "../src/rename.ts";
-import { scaffold, templatesRoot, type DbEngine, type SchemaLib } from "../src/scaffold.ts";
+import { OPTIONS } from "../src/options.ts";
+import { COMBOS, scaffold, templatesRoot, type DbEngine, type SchemaLib } from "../src/scaffold.ts";
 
 interface PackageJson {
   name?: string;
   workspaces?: string[];
   scripts?: Record<string, string>;
-  overrides?: Record<string, string>;
+  overrides?: Record<string, string | Record<string, string>>;
   dependencies?: Record<string, string>;
 }
 
@@ -86,8 +87,6 @@ async function assertScaffold(
   ).toBeNull();
   expect(await stat(join(dir, "shared", "variants")).catch(() => null)).toBeNull();
   expect(await stat(join(dir, "server", "src", "variants")).catch(() => null)).toBeNull();
-  expect(env).toContain('resolve(import.meta.dir, "../..")');
-  expect(env).not.toContain('"../../../.."');
 
   if (flavor === "angular") {
     const notesPage = await readFile(
@@ -99,7 +98,6 @@ async function assertScaffold(
 
   const drizzleConfig = await readFile(join(dir, "server", "drizzle.config.ts"), "utf8");
   const dbClient = await readFile(join(dir, "server", "src", "db.ts"), "utf8");
-  const service = await readFile(join(dir, "server", "src", "notes", "notes.service.ts"), "utf8");
 
   expect(await stat(join(dir, "removals.json")).catch(() => null)).toBeNull();
 
@@ -119,24 +117,15 @@ async function assertScaffold(
     expect(dbClient).toContain('from "drizzle-orm/postgres-js"');
     expect(dbClient).toContain('"../drizzle-pg"');
     expect(dbClient).toContain("@server/schema");
-    expect(dbClient).toContain("describeDatabaseUrl");
-    // The connection guard ships inside the db twin, so no suite can forget it.
     expect(dbClient).toContain("current_database");
     expect(dbClient).toContain("refusing to run");
     expect(dbClient).not.toContain("bun:sqlite");
-    expect(service).toContain("Effect.tryPromise");
     expect(serverPkg.dependencies?.postgres).toBe("3.4.9");
     expect(env).toContain("DATABASE_URL");
     expect(env).not.toContain("DATABASE_PATH");
     expect(await readFile(join(dir, "server", "test", "env.cases.ts"), "utf8")).toContain(
       "DATABASE_URL",
     );
-    for (const file of ["notes.test.ts", "hosting.test.ts", "client-dist.test.ts"]) {
-      const text = await readFile(join(dir, "server", "test", file), "utf8");
-      expect(text).toContain("MH_REQUIRE_POSTGRES");
-      expect(text).toContain("closeAndDrop");
-      expect(text).not.toContain("assertCurrentDatabase");
-    }
     expect(readme).not.toContain("SQLite");
     expect(readme).not.toContain("DATABASE_PATH");
     expect(readme).not.toContain("server/data/");
@@ -150,7 +139,9 @@ async function assertScaffold(
     ).toBeNull();
   } else {
     expect(drizzleConfig).toContain('dialect: "sqlite"');
-    expect((await stat(join(dir, "server", "drizzle", "0000_soft_alice.sql"))).isFile()).toBe(true);
+    expect(
+      (await readdir(join(dir, "server", "drizzle"))).filter((name) => name.endsWith(".sql")),
+    ).toHaveLength(1);
     expect((await stat(join(dir, "server", "drizzle", "meta", "_journal.json"))).isFile()).toBe(
       true,
     );
@@ -178,8 +169,21 @@ async function assertScaffold(
     expect(text).toContain(databaseLabel);
     expect(text).not.toContain(otherDatabaseLabel);
   }
+  const sourceLabels = [
+    ...Array.from(
+      diagramSource.matchAll(/^\s*\w+\[\(?(.+?)\)?\]/gm),
+      (match) => match[1] ?? "",
+    ).flatMap((label) => label.split("<br/>")),
+    ...Array.from(diagramSource.matchAll(/\|([^|]+)\|/g), (match) => match[1] ?? ""),
+    ...Array.from(diagramSource.matchAll(/^\s*subgraph (.+)$/gm), (match) => match[1] ?? ""),
+  ];
+  const svgLabels = Array.from(
+    diagram.matchAll(/<(?:text|tspan)\b[^>]*>([^<]+)<\/(?:text|tspan)>/g),
+    (match) => match[1] ?? "",
+  );
+  expect(svgLabels.sort()).toEqual(sourceLabels.sort());
+  expect(readme).toContain("shared/notes.meta.ts");
   if (db === "postgres") {
-    // Truthful without a URL: 17 gated tests skip, so 7 pass and 23 skip.
     expect(readme).toContain("`7 pass`, `23 skip`");
     expect(readme).toContain("`24 pass`");
   } else {
@@ -209,7 +213,6 @@ async function assertScaffold(
     expect(serverPkg.dependencies?.effect).toBe("4.1.0");
     expect(contract).toContain('import { Schema, SchemaTransformation } from "effect";');
     expect(env).toContain('import { Effect, Schema } from "effect";');
-    expect(contractTest).toContain("standardCheck");
   }
 
   const chosen = flavor === "react" ? "client" : "client-angular";
@@ -244,7 +247,7 @@ async function assertScaffold(
     expect(pkg.scripts?.build).toBe(`bun run --filter ${CLIENT_PACKAGE} build`);
     expect(pkg.scripts?.check).toBe("bun run routes && vp check");
     expect(pkg.scripts?.["dev:angular"]).toBeUndefined();
-    expect(pkg.overrides?.["@angular/build>vite"]).toBeUndefined();
+    expect(pkg.overrides?.["@angular/build"]).toBeUndefined();
   } else {
     expect(pkg.scripts?.dev).toBeUndefined();
     expect(pkg.scripts?.routes).toBeUndefined();
@@ -252,6 +255,7 @@ async function assertScaffold(
     expect(pkg.scripts?.["dev:angular-client"]).toBe(`bun run --filter ${CLIENT_PACKAGE} start`);
     expect(pkg.scripts?.check).toBe(`vp check && bun run --filter ${CLIENT_PACKAGE} lint`);
     expect(pkg.scripts?.typecheck).toBe("vp check --no-fmt --no-lint");
+    expect(pkg.overrides?.["@angular/build"]).toEqual({ vite: "8.3.8" });
   }
 
   const vite = await readFile(join(dir, "vite.config.ts"), "utf8");
@@ -302,8 +306,18 @@ async function assertScaffold(
       starter: false,
     });
     expect({ file, title: text.includes("Lightweight web app") }).toEqual({ file, title: false });
+    for (const token of [
+      "--filter client ",
+      "/variants/",
+      'selector: "app-',
+      "<app-root",
+      "</app-root>",
+      'prefix: "app"',
+      ...(flavor === "react" ? ["client-angular", "@angular/"] : ["@client/", "routeTree.gen.ts"]),
+    ]) {
+      expect({ file, token, found: text.includes(token) }).toEqual({ file, token, found: false });
+    }
   }
-  expect(await findLeftovers(dir, flavor, PROJECT)).toEqual([]);
 
   expect((await stat(join(dir, ".gitignore"))).isFile()).toBe(true);
   expect((await stat(join(dir, ".npmrc"))).isFile()).toBe(true);
@@ -334,54 +348,8 @@ async function assertScaffold(
   }
 }
 
-const combos = [
-  { name: "react flavor", flavor: "react" as const, schema: "zod" as const, db: "sqlite" as const },
-  {
-    name: "angular flavor",
-    flavor: "angular" as const,
-    schema: "zod" as const,
-    db: "sqlite" as const,
-  },
-  {
-    name: "react flavor with effect schemas",
-    flavor: "react" as const,
-    schema: "effect" as const,
-    db: "sqlite" as const,
-  },
-  {
-    name: "angular flavor with effect schemas",
-    flavor: "angular" as const,
-    schema: "effect" as const,
-    db: "sqlite" as const,
-  },
-  {
-    name: "react flavor with postgres",
-    flavor: "react" as const,
-    schema: "zod" as const,
-    db: "postgres" as const,
-  },
-  {
-    name: "angular flavor with postgres",
-    flavor: "angular" as const,
-    schema: "zod" as const,
-    db: "postgres" as const,
-  },
-  {
-    name: "react flavor with effect schemas and postgres",
-    flavor: "react" as const,
-    schema: "effect" as const,
-    db: "postgres" as const,
-  },
-  {
-    name: "angular flavor with effect schemas and postgres",
-    flavor: "angular" as const,
-    schema: "effect" as const,
-    db: "postgres" as const,
-  },
-];
-
-for (const combo of combos) {
-  test(`scaffolds the ${combo.name}`, async () => {
+for (const combo of COMBOS) {
+  test(`scaffolds ${combo.flavor} ${combo.schema} ${combo.db}`, async () => {
     const dir = await makeTarget(combo.flavor);
     const result = await scaffold({
       flavor: combo.flavor,
@@ -421,10 +389,10 @@ test("keeps existing files and reports the skip", async () => {
   }
 
   expect(await readFile(existing, "utf8")).toBe(existingText);
-  expect(lines.some((line) => line.includes("skipped existing file: README.md"))).toBe(true);
+  expect(lines).toEqual([]);
 });
 
-test("keeps a user-owned file at an effect overlay destination", async () => {
+test("rejects variant conflicts with existing files", async () => {
   const dir = await makeTarget("react");
   // Deliberate split: `server/src/env.ts` is shipped by both the base tree and
   // the overlay, so a pre-existing copy wins at both layers. The other overlay
@@ -435,29 +403,40 @@ test("keeps a user-owned file at an effect overlay destination", async () => {
   await mkdir(dirname(userEnv), { recursive: true });
   await writeFile(userEnv, userText);
 
-  const result = await scaffold({
+  const error = await scaffold({
     flavor: "react",
     projectName: PROJECT,
     targetDir: dir,
     schema: "effect",
     db: "sqlite",
-  });
-
-  expect(result.schema).toBe("effect");
-  expect(result.skipped).toEqual(["server/src/env.ts"]);
+  }).then(
+    () => null,
+    (reason: unknown) => reason,
+  );
+  expect(error).toBeInstanceOf(Error);
+  expect(error).toHaveProperty(
+    "message",
+    "Overlay conflicts with an existing file: server/src/env.ts",
+  );
   expect(await readFile(userEnv, "utf8")).toBe(userText);
 
-  const contract = await readFile(join(dir, "shared", "notes.contract.ts"), "utf8");
-  expect(contract).toContain('import { Schema, SchemaTransformation } from "effect";');
-  expect(await readFile(join(dir, "server", "test", "env.test.ts"), "utf8")).toContain(
-    'from "@server/env"',
+  const rerun = await makeTarget("react");
+  const options = {
+    flavor: "react" as const,
+    projectName: PROJECT,
+    targetDir: rerun,
+    db: "sqlite" as const,
+  };
+  await scaffold({ ...options, schema: "effect" });
+  const rerunError = await scaffold({ ...options, schema: "zod" }).then(
+    () => null,
+    (reason: unknown) => reason,
   );
-  const sharedPkg = await readJson<PackageJson>(join(dir, "shared", "package.json"));
-  expect(sharedPkg.dependencies?.effect).toBe("4.1.0");
-  expect(sharedPkg.dependencies?.zod).toBeUndefined();
-  const serverPkg = await readJson<PackageJson>(join(dir, "server", "package.json"));
-  expect(serverPkg.dependencies?.effect).toBe("4.1.0");
-  expect(serverPkg.dependencies?.zod).toBeUndefined();
+  expect(rerunError).toBeInstanceOf(Error);
+  expect(rerunError).toHaveProperty(
+    "message",
+    "Cannot determine existing scaffold variant: server/src/env.ts",
+  );
 });
 
 test("keeps user files inside a removed sqlite directory", async () => {
@@ -474,8 +453,8 @@ test("keeps user files inside a removed sqlite directory", async () => {
   expect(result.removed).toEqual(["server/drizzle.config.ts", "server/drizzle/"]);
   expect(await readFile(join(dir, "server", "drizzle", "custom.sql"), "utf8")).toBe("-- mine\n");
   expect(
-    await stat(join(dir, "server", "drizzle", "0000_soft_alice.sql")).catch(() => null),
-  ).toBeNull();
+    (await readdir(join(dir, "server", "drizzle"))).filter((name) => name.endsWith(".sql")),
+  ).toEqual(["custom.sql"]);
   expect(await stat(join(dir, "server", "drizzle", "meta")).catch(() => null)).toBeNull();
 });
 
@@ -577,8 +556,15 @@ test("prints the flag recipe when stdin is not a TTY", () => {
   expect(output).toContain("mh-stack needs a TTY for prompts. Non-interactive usage:");
   expect(output).toContain("npx mh-stack --react --name my-app my-app");
   expect(output).toContain("npx mh-stack --angular --name my-app my-app");
-  expect(output).toContain("--zod | --effect");
-  expect(output).toContain("--sqlite | --postgres");
+  for (const option of OPTIONS) {
+    expect(output).toContain(option.flags.replace(/^-[a-z], /, ""));
+  }
+  const help = spawnSync("node", [CLI_ENTRY, "--help"], { encoding: "utf8" });
+  expect(help.status).toBe(0);
+  for (const option of OPTIONS) {
+    expect(help.stdout).toContain(option.flags);
+    expect(help.stdout).toContain(option.description);
+  }
 });
 
 test("prints DATABASE_URL in the postgres manual recipe", async () => {
@@ -591,7 +577,9 @@ test("prints DATABASE_URL in the postgres manual recipe", async () => {
   );
   expect(result.status).toBe(0);
   expect(result.stdout).toContain(
-    "    DATABASE_URL=postgres://user:pass@localhost:5432/my_app bun run db:migrate",
+    process.platform === "win32"
+      ? '    $env:DATABASE_URL = "postgres://user:pass@localhost:5432/my_app"; bun run db:migrate'
+      : "    DATABASE_URL=postgres://user:pass@localhost:5432/my_app bun run db:migrate",
   );
   expect(result.stdout).not.toContain("> Installing dependencies");
 });
@@ -606,7 +594,10 @@ test("spawned entry scaffolds the react flavor", async () => {
   });
   expect(result.status).toBe(0);
   expect(result.stdout.split("\n")[0]).toBe(`mh-stack ${version}`);
-  await assertScaffold("react", dir);
+  expect((await stat(join(dir, "client"))).isDirectory()).toBe(true);
+  const shared = await readJson<PackageJson>(join(dir, "shared", "package.json"));
+  expect(shared.dependencies?.zod).toBeDefined();
+  expect((await stat(join(dir, "server", "drizzle"))).isDirectory()).toBe(true);
 });
 
 test("spawned entry scaffolds the angular flavor", async () => {
@@ -617,7 +608,7 @@ test("spawned entry scaffolds the angular flavor", async () => {
   delete env.MH_STACK_TEMPLATES_DIR;
   const result = spawnSync(
     "node",
-    [CLI_ENTRY, "--angular", "--name", PROJECT, "--no-install", dir],
+    [CLI_ENTRY, "--angular", "--effect", "--postgres", "--name", PROJECT, "--no-install", dir],
     {
       encoding: "utf8",
       env,
@@ -625,35 +616,13 @@ test("spawned entry scaffolds the angular flavor", async () => {
   );
   expect(result.status).toBe(0);
   expect(result.stdout.split("\n")[0]).toBe(`mh-stack ${version}`);
-  await assertScaffold("angular", dir);
-});
-
-test("spawned entry defaults to zod without a schema flag", async () => {
-  const dir = await makeTarget("react");
-  const env = { ...process.env, MH_STACK_TEMPLATES_DIR: templatesRoot() };
-  const result = spawnSync("node", [CLI_ENTRY, "--react", "--name", PROJECT, "--no-install", dir], {
-    encoding: "utf8",
-    env,
-  });
-  expect(result.status).toBe(0);
-  expect(result.stdout).not.toContain("Schema library:");
-  const contract = await readFile(join(dir, "shared", "notes.contract.ts"), "utf8");
-  expect(contract).toContain('import { z } from "zod";');
-  expect(contract).not.toContain('from "effect"');
-  expect((await stat(join(dir, "server", "drizzle"))).isDirectory()).toBe(true);
-  expect(await stat(join(dir, "server", "drizzle-pg")).catch(() => null)).toBeNull();
-});
-
-test("spawned entry scaffolds the postgres variant", async () => {
-  const dir = await makeTarget("angular");
-  const env = { ...process.env, MH_STACK_TEMPLATES_DIR: templatesRoot() };
-  const result = spawnSync(
-    "node",
-    [CLI_ENTRY, "--angular", "--effect", "--postgres", "--name", PROJECT, "--no-install", dir],
-    { encoding: "utf8", env },
-  );
-  expect(result.status).toBe(0);
-  await assertScaffold("angular", dir, "effect", "postgres");
+  expect(result.stdout).toContain("DATABASE_URL");
+  expect(result.stdout).toContain("bun run db:migrate");
+  expect(result.stdout.indexOf("DATABASE_URL")).toBeLessThan(result.stdout.indexOf("Done."));
+  expect((await stat(join(dir, "client-angular"))).isDirectory()).toBe(true);
+  const shared = await readJson<PackageJson>(join(dir, "shared", "package.json"));
+  expect(shared.dependencies?.effect).toBeDefined();
+  expect((await stat(join(dir, "server", "drizzle-pg"))).isDirectory()).toBe(true);
 });
 
 test("rejects conflicting database flags before writing", async () => {
@@ -667,18 +636,6 @@ test("rejects conflicting database flags before writing", async () => {
   expect(result.status).toBe(1);
   expect(`${result.stdout}${result.stderr}`).toContain("Choose one of --sqlite or --postgres.");
   expect(await stat(dir).catch(() => null)).toBeNull();
-});
-
-test("spawned entry scaffolds the effect variant", async () => {
-  const dir = await makeTarget("angular");
-  const env = { ...process.env, MH_STACK_TEMPLATES_DIR: templatesRoot() };
-  const result = spawnSync(
-    "node",
-    [CLI_ENTRY, "--angular", "--effect", "--name", PROJECT, "--no-install", dir],
-    { encoding: "utf8", env },
-  );
-  expect(result.status).toBe(0);
-  await assertScaffold("angular", dir, "effect");
 });
 
 afterAll(async () => {

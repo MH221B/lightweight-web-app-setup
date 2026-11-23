@@ -42,7 +42,7 @@ bun run dev:angular
 
 - Client: <http://localhost:5173> (Angular dev server)
 - API: <http://localhost:3000>
-- `client-angular/proxy.conf.json` proxies `/api` to `http://localhost:3000`. The Angular dev server reads `PORT` too, so leave `PORT` unset while both processes run.
+- `client-angular/proxy.conf.mjs` proxies `/api` to the API on `PORT`, defaulting to 3000.
 - If the React dev server is already on 5173, Angular prints the next free port (5174) and serves there.
 
 Both commands start their two processes with `bun run --parallel`, so no second terminal or extra tooling is needed. The two-terminal path still works if you prefer it: `bun run dev:server` plus `bun run dev:client`, or `bun run dev:server` plus `bun run --filter client-angular start`.
@@ -63,7 +63,7 @@ bun run check
 
 `bun run typecheck` is the same type check without formatting, linting, or Angular: `bun run routes && vp check --no-fmt --no-lint`.
 
-`bun run verify` is the full gate: `check` + `test` + `build` for both clients.
+`bun run verify` is the full gate: `check` + `test` + `build` for both clients. Its CLI tests regenerate `cli/templates/` and `cli/overlays/`.
 
 ## Vite+ tooling
 
@@ -75,12 +75,12 @@ This baseline uses the project-local Vite+ CLI (`vite-plus@1.7.0`); no global in
 | `vp build`                 | Active                | React client production build; `bun run build` runs it and then the Angular build.                                                                                              |
 | `vp check`                 | Active                | Oxfmt over `client/`, `client-angular/`, `server/`, `shared/`; Oxlint and full type checks over everything except `client-angular/`; the normal static check (`bun run check`). |
 | `vp fmt`, `vp lint`        | Active via `vp check` | Root config lives in `vite.config.ts`; `client-angular/**` is formatted but outside the lint/type-check scope; generated and build paths are ignored.                           |
-| `vp test` / Vitest         | Not used              | The only tests are server integration tests; see below.                                                                                                                         |
+| `vp test` / Vitest         | Not used              | Server and CLI tests use `bun:test`; see below.                                                                                                                                 |
 | `vp run`                   | Not used              | Root scripts already delegate through Bun workspace filters; Vite Task would duplicate that plumbing.                                                                           |
 | `vp create` / `vp migrate` | Not used              | The project is hand-authored; generators and codemods are out of scope.                                                                                                         |
 | `vp pack` / tsdown         | Not applicable        | No library package is published from this app.                                                                                                                                  |
 
-Server tests use `bun:test` on purpose: they exercise the NestJS/Fastify app against an in-memory `bun:sqlite` database through the checked-in Drizzle migration. `bun run test` delegates to `bun test` in `server/`.
+Server tests use `bun:test` on purpose: they exercise the NestJS/Fastify app against an in-memory `bun:sqlite` database through the checked-in Drizzle migration. `bun run test` runs the server and CLI suites.
 
 ## Angular flavor
 
@@ -94,7 +94,7 @@ Server tests use `bun:test` on purpose: they exercise the NestJS/Fastify app aga
 
 ## API contract
 
-`shared/notes.contract.ts` defines the routes, request validation, and response types for `GET /api/notes` and `POST /api/notes`. `server/src/notes/notes.controller.ts` implements them with the Nest controller decorator `@Implement` and calls the injectable `NotesService`. `shared/api.ts` is a contract-driven oRPC OpenAPI client that both flavors import. No generated API client is needed.
+`shared/notes.contract.ts` defines the routes, request validation, and response types for `GET /api/notes` and `POST /api/notes`. `shared/notes.meta.ts` holds their shared path and metadata. `server/src/notes/notes.controller.ts` implements them with the Nest controller decorator `@Implement` and calls the injectable `NotesService`. `shared/api.ts` is a contract-driven oRPC OpenAPI client that both flavors import. No generated API client is needed.
 
 `@client/...` resolves to `client/src/`, `@server/...` to `server/src/`, and `@shared/...` to `shared/`. Clients import the shared data layer, not the server application.
 
@@ -161,7 +161,9 @@ $env:CLIENT_DIST = "client-angular/dist"; bun run start
 
 SQLite is the default and the live application's database: `server/src/db.ts`, `server/src/schema.ts`, `server/src/notes/`, and `server/drizzle/`.
 
-The PostgreSQL twin mirrors those paths under `server/src/variants/postgres/`, with its own migrations in `server/drizzle-pg/` and env twins at `server/src/variants/postgres/env.ts` (Zod) and `server/src/variants/effect-postgres/env.ts` (Effect Schema). PostgreSQL needs `DATABASE_URL` (`postgres://` or `postgresql://`); SQLite never reads it.
+The PostgreSQL twin mirrors those paths under `server/src/variants/postgres/`, with its own migrations in `server/drizzle-pg/` and env twins at `server/src/variants/postgres/env.ts` (Zod) and `server/src/variants/effect-postgres/env.ts` (Effect Schema). PostgreSQL needs `DATABASE_URL` (`postgres://` or `postgresql://`) with a host and database path; SQLite never reads it.
+
+Generate PostgreSQL migrations with `bun run db:generate:pg`.
 
 ```bash
 DATABASE_URL=postgres://user:pass@localhost:5432/notes bun run --filter server test
@@ -187,13 +189,21 @@ Delete or replace these files together:
 - `client-angular/src/app/notes/notes.service.ts` — the Angular queries and mutation
 - `shared/api.ts` — the typed client and Notes helpers
 - `shared/notes.contract.ts` — the shared contract
+- `shared/notes.meta.ts` — the Notes path and metadata
+- `shared/variants/effect/notes.contract.ts` — the Effect contract twin
 - `server/src/notes/notes.controller.ts`
 - `server/src/notes/notes.errors.ts`
 - `server/src/notes/notes.module.ts`
 - `server/src/notes/notes.service.ts`
 - `server/src/notes/schema.ts`
 - `server/drizzle/` — the Notes migration history
+- `server/drizzle-pg/` — the PostgreSQL Notes migration history
+- `server/src/variants/effect/`, `server/src/variants/effect-postgres/`, `server/src/variants/postgres/`, and `server/src/variants/shared/` — review and update the env, database, schema, and Notes twins along with the live server
 - `server/test/notes.test.ts`
+- `server/test/notes-postgres.test.ts` — the PostgreSQL Notes tests
+- `server/test/contract.cases.ts`, `server/test/contract.test.ts`, and `server/test/contract-effect.test.ts` — the shared contract tests
+- `server/test/env-effect.test.ts`, `server/test/env-postgres.cases.ts`, `server/test/env-postgres.test.ts`, and `server/test/env-postgres-effect.test.ts` — review the variant environment tests when changing their twins
+- `server/test/hosting-postgres.test.ts` and `server/test/client-dist-postgres.test.ts` — update their Notes-dependent checks
 
 Then:
 
@@ -203,9 +213,9 @@ Then:
 - Replace the Notes-based compression test in `server/test/hosting.test.ts` with one that exercises a sufficiently large response from your replacement application.
 - Remove `server/data/` for a clean database.
 - Remove the `NotesPage` entry from `client-angular/src/app/app.routes.ts`.
-- Keep the root workspace, `client/vite.config.ts`, `client-angular/angular.json`, `client-angular/proxy.conf.json`, `server/src/db.ts`, and the static-hosting code.
+- Keep the root workspace, `client/vite.config.ts`, `client-angular/angular.json`, `client-angular/proxy.conf.mjs`, `server/src/db.ts`, and the static-hosting code.
 
-To rename rather than remove, replace `Notes`, `notes`, and `/api/notes` consistently across those files, then regenerate migrations only if the table name changes.
+To rename rather than remove, replace `Notes` and `notes` consistently across those files and change the `/api/notes` path in `shared/notes.meta.ts`, then regenerate migrations only if the table name changes.
 
 ## Layout
 
@@ -213,7 +223,8 @@ To rename rather than remove, replace `Notes`, `notes`, and `/api/notes` consist
 - `client-angular/` — Angular 22, Angular CLI, Signal Forms, TanStack Angular Query, oRPC OpenAPI client
 - `server/` — NestJS/Fastify on Bun, oRPC v1, Effect, Zod, Drizzle, SQLite (PostgreSQL twins under `server/src/variants/postgres/`)
 - `server/drizzle-pg/` — the PostgreSQL twin's committed migration history
-- `shared/` — the oRPC v1 API contract and the framework-free oRPC client both flavors import
+- `shared/` — `notes.meta.ts`, the oRPC v1 API contract, and the framework-free oRPC client both flavors import
+- [`cli/`](cli/README.md) — the `mh-stack` scaffolder and its tests
 - `server/data/` — persistent SQLite files (ignored)
 
 The diagram source is [`architecture.mmd`](architecture.mmd); the README uses [`architecture.svg`](architecture.svg).
@@ -264,9 +275,11 @@ Never commit `server/data/`, either client's build output, the Angular CLI cache
 
 ### Keeping only the Angular flavor
 
-`client-angular/` does not stand alone: the app imports `@shared/*`, and the workspace entry, the `@angular/build>vite` override, and the `--filter` scripts live in the root `package.json`. Copy the whole baseline first, then trim it:
+`client-angular/` does not stand alone: the app imports `@shared/*`, and the workspace entry, the scoped `vite` override for `@angular/build`, and the `--filter` scripts live in the root `package.json`. Copy the whole baseline first, then trim it:
 
-1. Delete `client/`, drop the React-only legs from the root `package.json` (`dev`, `dev:client`, `routes`, the `bun run --filter client build` half of `build`, and the `bun run routes &&` prefixes in `typecheck`/`check`), and remove the stale `client/*` ignore globs from `vite.config.ts`.
-2. Keep `angular.json` (`outputPath` with an empty `browser` name, dev-server port 5173, `proxy.conf.json`), `tsconfig.json`/`tsconfig.app.json` (TypeScript 6.0.x and the `@shared/*` path), and `eslint.config.mjs`.
+1. Delete `client/` and `cli/`, remove both from root `workspaces`, drop the React-only legs from root `package.json` (`dev`, `dev:client`, `routes`, the `bun run --filter client build` half of `build`, and the `bun run routes &&` prefixes in `typecheck`/`check`), and remove the stale `client/*` and `cli/*` ignore globs from `vite.config.ts`. Drop `templates:sync` and `test:cli`, and change `test` to `bun run --filter server test`; the scaffolder is no longer available in this trimmed app.
+2. Keep `angular.json` (`outputPath` with an empty `browser` name, dev-server port 5173, `proxy.conf.mjs`), `tsconfig.json`/`tsconfig.app.json` (TypeScript 6.0.x and the `@shared/*` path), and `eslint.config.mjs`.
 3. Rename the `projects` key and every `buildTarget` value in `angular.json` (the targets name `client-angular:build:...`; `ng serve` breaks if they still point at the old project), the package name, and the `app-` selector prefix if you want a different one. The `--filter` names in the commands below follow the new package name.
-4. Replace the Notes page and service using the removal list above, then run `bun run --filter client-angular build` and `bun run --filter client-angular lint`.
+4. Remove the generated CLI block and stale `client/` entries from `.gitignore`, and update this README to describe only the retained Angular app and its commands.
+5. Run `bun install` to regenerate `bun.lock` for the trimmed workspaces, then run `bun install --frozen-lockfile` and `bun run verify`.
+6. Replace the Notes page and service using the removal list above, then run `bun run --filter client-angular build` and `bun run --filter client-angular lint`.

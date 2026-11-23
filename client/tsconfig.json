@@ -6,7 +6,6 @@
     "types": ["vite-plus/client", "bun"],
     "paths": {
       "@client/*": ["./src/*"],
-      "@server/*": ["../server/src/*"],
       "@shared/*": ["../shared/*"]
     }
   },

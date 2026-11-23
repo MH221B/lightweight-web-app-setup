@@ -19,13 +19,18 @@ const link = new OpenAPILink(notesContract, {
   },
 });
 const api: JsonifiedClient<ContractRouterClient<typeof notesContract>> = createORPCClient(link);
-export type Note = Awaited<ReturnType<typeof api.list>>["notes"][number];
+type Note = Awaited<ReturnType<typeof api.list>>["notes"][number];
 
 export async function fetchNotes(): Promise<Note[]> {
   try {
     return (await api.list()).notes;
-  } catch {
-    throw new Error("Could not load notes.");
+  } catch (error) {
+    throw new Error(
+      error instanceof ORPCError && error.code === "NOTES_HTTP_ERROR"
+        ? error.message
+        : "Could not load notes.",
+      { cause: error },
+    );
   }
 }
 

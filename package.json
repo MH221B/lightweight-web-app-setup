@@ -25,6 +25,7 @@
     "test:cli": "bun run --filter mh-stack templates:sync && bun run --filter mh-stack build && bun test cli/test",
     "templates:sync": "bun run --filter mh-stack templates:sync",
     "db:generate": "bun run --filter server db:generate",
+    "db:generate:pg": "bun run --filter server db:generate:pg",
     "db:migrate": "bun run --filter server db:migrate",
     "start": "bun run --filter server start"
   },
@@ -34,7 +35,9 @@
     "vite-plus": "1.7.0"
   },
   "overrides": {
-    "@angular/build>vite": "8.3.8",
+    "@angular/build": {
+      "vite": "8.3.8"
+    },
     "vite": "npm:@voidzero-dev/vite-plus-core@1.7.0",
     "vitest": "5.1.0"
   },

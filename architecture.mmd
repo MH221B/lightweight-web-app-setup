@@ -1,9 +1,5 @@
 flowchart TB
-  subgraph Clients
-    direction LR
-    React[React client<br/>Vite+ · TanStack Router/Query]
-    Angular[Angular client<br/>Angular CLI · Signal Forms]
-  end
+  Client[Web client<br/>TanStack Query · oRPC]
   Shared[Shared data layer<br/>oRPC v1 contract · api.ts]
   API[NestJS controller<br/>Fastify on Bun]
   subgraph Storage
@@ -13,9 +9,7 @@ flowchart TB
     Service --> DB
   end
 
-  React -->|HTTP request| API
-  Angular -->|HTTP request| API
+  Client -->|HTTP request| API
   API --> Service
-  Shared -.->|types + fetch helpers| React
-  Shared -.->|types + fetch helpers| Angular
+  Shared -.->|types + fetch helpers| Client
   Shared -.->|contract| API

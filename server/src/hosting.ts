@@ -1,5 +1,6 @@
 import { join, relative, resolve, sep } from "node:path";
 import type { FastifyReply, FastifyRequest } from "fastify";
+import { API_PREFIX } from "@shared/notes.meta";
 
 // Build tools put a content hash in the file name. Vite keeps them under
 // assets/ (index-9f2c1a7b.js); Angular emits them at the output root
@@ -14,14 +15,17 @@ function isImmutable(file: string): boolean {
   return file.startsWith("assets/") || HASHED_BUILD_FILE.test(file);
 }
 
-export function createNotFoundHandler(options: { serveClient?: boolean; clientDist?: string }) {
-  const clientDist = resolve(options.clientDist ?? resolve(import.meta.dir, "../../client/dist"));
+export type HostingOptions =
+  | { serveClient: true; clientDist: string }
+  | { serveClient?: false; clientDist?: string };
 
+export function createNotFoundHandler(options: HostingOptions) {
   return async function notFound(request: FastifyRequest, reply: FastifyReply) {
     const path = request.url.split("?")[0] ?? "/";
-    if (path === "/api" || path.startsWith("/api/"))
+    if (path === API_PREFIX || path.startsWith(`${API_PREFIX}/`))
       return reply.status(404).send({ error: "Not found" });
     if (options.serveClient && request.method === "GET") {
+      const clientDist = resolve(options.clientDist);
       let decoded: string;
       try {
         decoded = decodeURIComponent(path);

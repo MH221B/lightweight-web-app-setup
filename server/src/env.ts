@@ -20,5 +20,3 @@ export type Env = z.infer<typeof EnvSchema>;
 export function parseEnv(source: Record<string, string | undefined> = process.env): Env {
   return EnvSchema.parse(source);
 }
-
-export const env = parseEnv();

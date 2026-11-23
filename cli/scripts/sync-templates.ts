@@ -1,16 +1,29 @@
 #!/usr/bin/env bun
 import { spawnSync } from "node:child_process";
-import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
-import { dirname, join, relative, resolve } from "node:path";
+import {
+  mkdir as diskMkdir,
+  readFile as diskReadFile,
+  rm,
+  writeFile as diskWriteFile,
+} from "node:fs/promises";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  CLIENT_DIR,
+  DOTFILES,
+  OVERLAY_SETS,
+  type Flavor,
+  type OverlaySet,
+} from "../src/template-config.ts";
+import { walkFiles } from "../src/walk.ts";
 
-type Flavor = "react" | "angular";
+type OverrideValue = string | Record<string, string>;
 
 interface PackageJson {
   name?: string;
   workspaces?: string[];
   scripts?: Record<string, string>;
-  overrides?: Record<string, string>;
+  overrides?: Record<string, OverrideValue>;
   dependencies?: Record<string, string>;
   [key: string]: unknown;
 }
@@ -21,10 +34,34 @@ const CLI_ROOT = join(REPO_ROOT, "cli");
 const TEMPLATES_ROOT = join(CLI_ROOT, "templates");
 const OVERLAYS_ROOT = join(CLI_ROOT, "overlays");
 const VP_BIN = join(REPO_ROOT, "node_modules", "vite-plus", "bin", "vp");
+const ASSEMBLY_ROOT = join(CLI_ROOT, "__sync_in_memory__");
+const assembled = new Map<string, Buffer>();
+
+function isAssemblyPath(file: string): boolean {
+  return resolve(file).startsWith(`${ASSEMBLY_ROOT}${sep}`);
+}
+
+async function readFile(file: string): Promise<Buffer>;
+async function readFile(file: string, encoding: "utf8"): Promise<string>;
+async function readFile(file: string, encoding?: "utf8"): Promise<Buffer | string> {
+  if (!isAssemblyPath(file)) return encoding ? diskReadFile(file, encoding) : diskReadFile(file);
+  const value = assembled.get(resolve(file));
+  if (!value) throw new Error(`Missing assembled file: ${file}`);
+  return encoding ? value.toString(encoding) : value;
+}
+
+async function writeFile(file: string, data: string | Uint8Array): Promise<void> {
+  if (!isAssemblyPath(file)) throw new Error(`Unexpected assembly destination: ${file}`);
+  assembled.set(resolve(file), Buffer.from(data));
+}
+
+async function mkdir(dir: string, _options: { recursive: true }): Promise<void> {
+  if (!isAssemblyPath(dir)) throw new Error(`Unexpected assembly directory: ${dir}`);
+}
 
 const OTHER_CLIENT_DIR: Record<Flavor, string> = {
-  react: "client-angular",
-  angular: "client",
+  react: CLIENT_DIR.angular,
+  angular: CLIENT_DIR.react,
 };
 
 const EXCLUDED_PREFIXES = [
@@ -32,7 +69,6 @@ const EXCLUDED_PREFIXES = [
   ".github/",
   "artifact/",
   "cli/",
-  "docs/",
   "client-angular/.angular/",
   "client-angular/dist/",
   "client/.tanstack/",
@@ -44,26 +80,13 @@ const EXCLUDED_PREFIXES = [
   "shared/variants/",
 ];
 const EXCLUDED_FILES = new Set([
+  "architecture.theme.css",
   "bun.lock",
   "client/src/routeTree.gen.ts",
-  "server/test/client-dist-postgres.test.ts",
-  "server/test/contract-effect.test.ts",
-  "server/test/env-effect.test.ts",
-  "server/test/env-postgres-effect.test.ts",
   "server/test/env-postgres.cases.ts",
-  "server/test/env-postgres.test.ts",
-  "server/test/hosting-postgres.test.ts",
-  "server/test/notes-postgres.test.ts",
-  "server/test/test-database.probe.ts",
-  "server/test/test-database.ts",
 ]);
 // npm cannot pack these dotted names, so the sync stores them under a leading
 // underscore and the runtime maps them back (Task 4's DOTFILES).
-const DOTFILE_MAP: Record<string, string> = {
-  ".gitattributes": "_gitattributes",
-  ".gitignore": "_gitignore",
-  ".npmrc": "_npmrc",
-};
 
 class SyncError extends Error {}
 
@@ -234,6 +257,7 @@ Delete or replace these files together:
 - \`client/src/routes/index.tsx\` — the React page
 - \`shared/api.ts\` — the typed client and Notes helpers
 - \`shared/notes.contract.ts\` — the shared contract
+- \`shared/notes.meta.ts\` — the Notes path and metadata
 - \`server/src/notes/notes.controller.ts\`
 - \`server/src/notes/notes.errors.ts\`
 - \`server/src/notes/notes.module.ts\`
@@ -241,6 +265,7 @@ Delete or replace these files together:
 - \`server/src/notes/schema.ts\`
 - \`server/drizzle/\` — the Notes migration history
 - \`server/test/notes.test.ts\`
+- \`server/test/contract.cases.ts\` and \`server/test/contract.test.ts\` — the shared contract tests
 
 Then:
 
@@ -251,7 +276,7 @@ Then:
 - Remove \`server/data/\` for a clean database.
 - Keep the root workspace, \`client/vite.config.ts\`, \`server/src/db.ts\`, and the static-hosting code.
 
-To rename rather than remove, replace \`Notes\`, \`notes\`, and \`/api/notes\` consistently across those files, then regenerate migrations only if the table name changes.`,
+To rename rather than remove, replace \`Notes\` and \`notes\` consistently across those files and change the \`/api/notes\` path in \`shared/notes.meta.ts\`, then regenerate migrations only if the table name changes.`,
     },
     {
       heading: "Layout",
@@ -259,7 +284,7 @@ To rename rather than remove, replace \`Notes\`, \`notes\`, and \`/api/notes\` c
 
 - \`client/\` — React 19, Vite+, TanStack Router and Query, oRPC OpenAPI client
 - \`server/\` — NestJS/Fastify on Bun, oRPC v1, Effect, Zod, Drizzle, SQLite
-- \`shared/\` — the oRPC v1 API contract and the framework-free oRPC client the client imports
+- \`shared/\` — \`notes.meta.ts\`, the oRPC v1 API contract, and the framework-free oRPC client the client imports
 - \`server/data/\` — persistent SQLite files (ignored)
 
 The diagram source is [\`architecture.mmd\`](architecture.mmd); the README uses [\`architecture.svg\`](architecture.svg).`,
@@ -321,7 +346,7 @@ bun run dev:angular
 
 - Client: <http://localhost:5173> (Angular dev server)
 - API: <http://localhost:3000>
-- \`client-angular/proxy.conf.json\` proxies \`/api\` to \`http://localhost:3000\`. The Angular dev server reads \`PORT\` too, so leave \`PORT\` unset while both processes run.
+- \`client-angular/proxy.conf.mjs\` proxies \`/api\` to the API on \`PORT\`, defaulting to 3000.
 
 \`bun run dev:angular\` starts both processes with \`bun run --parallel\`, so no second terminal or extra tooling is needed. The two-terminal path also works: \`bun run dev:server\` plus \`bun run --filter client-angular start\`.`,
     },
@@ -398,6 +423,7 @@ Delete or replace these files together:
 - \`client-angular/src/app/notes/notes.service.ts\` — the Angular queries and mutation
 - \`shared/api.ts\` — the typed client and Notes helpers
 - \`shared/notes.contract.ts\` — the shared contract
+- \`shared/notes.meta.ts\` — the Notes path and metadata
 - \`server/src/notes/notes.controller.ts\`
 - \`server/src/notes/notes.errors.ts\`
 - \`server/src/notes/notes.module.ts\`
@@ -405,6 +431,7 @@ Delete or replace these files together:
 - \`server/src/notes/schema.ts\`
 - \`server/drizzle/\` — the Notes migration history
 - \`server/test/notes.test.ts\`
+- \`server/test/contract.cases.ts\` and \`server/test/contract.test.ts\` — the shared contract tests
 
 Then:
 
@@ -414,9 +441,9 @@ Then:
 - Replace the Notes-based compression test in \`server/test/hosting.test.ts\` with one that exercises a sufficiently large response from your replacement application.
 - Remove \`server/data/\` for a clean database.
 - Remove the \`NotesPage\` entry from \`client-angular/src/app/app.routes.ts\`.
-- Keep the root workspace, \`client-angular/angular.json\`, \`client-angular/proxy.conf.json\`, \`server/src/db.ts\`, and the static-hosting code.
+- Keep the root workspace, \`client-angular/angular.json\`, \`client-angular/proxy.conf.mjs\`, \`server/src/db.ts\`, and the static-hosting code.
 
-To rename rather than remove, replace \`Notes\`, \`notes\`, and \`/api/notes\` consistently across those files, then regenerate migrations only if the table name changes.`,
+To rename rather than remove, replace \`Notes\` and \`notes\` consistently across those files and change the \`/api/notes\` path in \`shared/notes.meta.ts\`, then regenerate migrations only if the table name changes.`,
     },
     {
       heading: "Layout",
@@ -424,7 +451,7 @@ To rename rather than remove, replace \`Notes\`, \`notes\`, and \`/api/notes\` c
 
 - \`client-angular/\` — Angular 22, Angular CLI, Signal Forms, TanStack Angular Query, oRPC OpenAPI client
 - \`server/\` — NestJS/Fastify on Bun, oRPC v1, Effect, Zod, Drizzle, SQLite
-- \`shared/\` — the oRPC v1 API contract and the framework-free oRPC client the client imports
+- \`shared/\` — \`notes.meta.ts\`, the oRPC v1 API contract, and the framework-free oRPC client the client imports
 - \`server/data/\` — persistent SQLite files (ignored)
 
 The diagram source is [\`architecture.mmd\`](architecture.mmd); the README uses [\`architecture.svg\`](architecture.svg).`,
@@ -486,6 +513,10 @@ const README_LINE_EDITS: Record<Flavor, Array<[find: string, replacement: string
     ],
   ],
   angular: [
+    [
+      "- Node.js 24.15 or newer. The Angular CLI 22 requires `^22.22.3 || ^24.15.0 || >=26.0.0`; this repository is verified on 24.19.0 and CI pins that version.",
+      "- Node.js 24.15 or newer. The Angular CLI 22 requires `^22.22.3 || ^24.15.0 || >=26.0.0`.",
+    ],
     [
       "A copyable Bun workspace with two client flavors — React 19 and Angular 22 — against one NestJS/Fastify API on Bun. The Notes example is intentionally disposable.",
       "A copyable Bun workspace with an Angular 22 client against a NestJS/Fastify API on Bun. The Notes example is intentionally disposable.",
@@ -553,12 +584,6 @@ const REACT_TEST_REWRITES: Array<{
   count: number;
 }> = [
   {
-    path: "server/test/client-dist.test.ts",
-    find: '"client-angular/dist"',
-    replacement: '"custom/dist"',
-    count: 2,
-  },
-  {
     path: "server/test/env.cases.ts",
     find: '"client-angular/dist"',
     replacement: '"custom/dist"',
@@ -585,6 +610,12 @@ const GITIGNORE_EDITS: Record<Flavor, Array<[find: string, replacement: string]>
 
 function isExcluded(file: string, flavor: Flavor): boolean {
   if (EXCLUDED_FILES.has(file)) return true;
+  if (
+    /^server\/test\/(?:.*-(?:postgres|effect)\.test\.ts|env-postgres.*\.test\.ts|test-database.*\.ts)$/.test(
+      file,
+    )
+  )
+    return true;
   const name = file.replace(/\/$/, "").split("/").pop() ?? "";
   if (name === "node_modules" || name === ".env" || name.startsWith(".env.")) return true;
   if (/\.db(?:-wal|-shm)?$/.test(name)) return true;
@@ -593,22 +624,15 @@ function isExcluded(file: string, flavor: Flavor): boolean {
 }
 
 async function sourceFiles(flavor: Flavor, base = ""): Promise<string[]> {
-  const files: string[] = [];
-  const entries = await readdir(join(REPO_ROOT, base), { withFileTypes: true });
-  entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-  for (const entry of entries) {
-    const path = base ? `${base}/${entry.name}` : entry.name;
-    if (isExcluded(entry.isDirectory() ? `${path}/` : path, flavor)) continue;
-    if (entry.isDirectory()) files.push(...(await sourceFiles(flavor, path)));
-    else if (entry.isFile()) files.push(path);
-  }
-  return files;
+  return walkFiles(join(REPO_ROOT, base), base, (path, directory) =>
+    isExcluded(directory ? `${path}/` : path, flavor),
+  );
 }
 
 function mappedName(file: string): string {
   const parts = file.split("/");
   const base = parts.pop() ?? "";
-  return [...parts, DOTFILE_MAP[base] ?? base].join("/");
+  return [...parts, DOTFILES[base] ?? base].join("/");
 }
 
 async function readJson<T>(file: string): Promise<T> {
@@ -654,22 +678,23 @@ async function editPackageJson(flavor: Flavor, root: string): Promise<void> {
     throw new SyncError(`${where}: scripts.test no longer starts with the server leg`);
   }
   const overrides = pkg.overrides;
-  if (!overrides || typeof overrides["@angular/build>vite"] !== "string") {
-    throw new SyncError(`${where}: overrides["@angular/build>vite"] is missing`);
+  const angularBuildOverride = overrides?.["@angular/build"];
+  if (
+    !overrides ||
+    !angularBuildOverride ||
+    typeof angularBuildOverride === "string" ||
+    typeof angularBuildOverride["vite"] !== "string"
+  ) {
+    throw new SyncError(`${where}: overrides["@angular/build"].vite is missing`);
   }
 
-  pkg.workspaces = workspaces.filter(
-    (workspace) => workspace !== "cli" && workspace !== OTHER_CLIENT_DIR[flavor],
-  );
-  delete scripts["templates:sync"];
-  delete scripts["test:cli"];
+  pkg.workspaces = [CLIENT_DIR[flavor], "server", "shared"];
   scripts.test = "bun run --filter server test";
 
   if (flavor === "react") {
     for (const key of ["dev:angular", "dev:angular-client", "dev:angular-server"]) {
       if (typeof scripts[key] !== "string")
         throw new SyncError(`${where}: scripts.${key} is missing`);
-      delete scripts[key];
     }
     if (
       scripts.build !== "bun run --filter client build && bun run --filter client-angular build"
@@ -684,12 +709,11 @@ async function editPackageJson(flavor: Flavor, root: string): Promise<void> {
     if (scripts.typecheck !== "bun run routes && vp check --no-fmt --no-lint") {
       throw new SyncError(`${where}: scripts.typecheck does not match the expected React form`);
     }
-    delete overrides["@angular/build>vite"];
+    delete overrides["@angular/build"];
   } else {
     for (const key of ["dev", "dev:client", "routes"]) {
       if (typeof scripts[key] !== "string")
         throw new SyncError(`${where}: scripts.${key} is missing`);
-      delete scripts[key];
     }
     if (
       scripts.build !== "bun run --filter client build && bun run --filter client-angular build"
@@ -707,6 +731,43 @@ async function editPackageJson(flavor: Flavor, root: string): Promise<void> {
     scripts.check = "vp check && bun run --filter client-angular lint";
   }
 
+  const allowedScripts =
+    flavor === "react"
+      ? [
+          "dev",
+          "dev:client",
+          "dev:server",
+          "routes",
+          "build",
+          "typecheck",
+          "check",
+          "verify",
+          "test",
+          "db:generate",
+          "db:migrate",
+          "start",
+        ]
+      : [
+          "dev:angular",
+          "dev:angular-client",
+          "dev:angular-server",
+          "dev:server",
+          "build",
+          "typecheck",
+          "check",
+          "verify",
+          "test",
+          "db:generate",
+          "db:migrate",
+          "start",
+        ];
+  pkg.scripts = Object.fromEntries(
+    allowedScripts.map((key) => {
+      const value = scripts[key];
+      if (typeof value !== "string") throw new SyncError(`${where}: scripts.${key} is missing`);
+      return [key, value];
+    }),
+  );
   await writeJson(file, pkg);
 }
 
@@ -748,6 +809,7 @@ async function trimTemplateServerPackage(flavor: Flavor, root: string): Promise<
   const file = join(root, "server", "package.json");
   const where = `server/package.json (${flavor})`;
   const pkg = await readJson<PackageJson>(file);
+  if (pkg.scripts) delete pkg.scripts["db:generate:pg"];
   const dependencies = pkg.dependencies;
   if (!dependencies) throw new SyncError(`${where}: dependencies is missing`);
   if (typeof dependencies["postgres"] !== "string") {
@@ -770,7 +832,7 @@ async function transform(flavor: Flavor, root: string): Promise<void> {
   }
   // The copy stored .gitignore under its placeholder name, so the trim edits
   // that file in place and leaves the dotted name to the runtime mapping.
-  const gitignorePath = join(root, "_gitignore");
+  const gitignorePath = join(root, DOTFILES[".gitignore"]!);
   let gitignore = stripCliGitignore(await readFile(gitignorePath, "utf8"));
   for (const [find, replacement] of GITIGNORE_EDITS[flavor]) {
     gitignore = replaceOnce(gitignore, find, replacement, ".gitignore");
@@ -811,6 +873,7 @@ async function editOverlayPackageJson(
   edit: (dependencies: Record<string, string>) => void,
 ): Promise<void> {
   const pkg = await readJson<PackageJson>(join(REPO_ROOT, source));
+  if (destination === "server/package.json" && pkg.scripts) delete pkg.scripts["db:generate:pg"];
   const dependencies = pkg.dependencies;
   if (!dependencies) throw new SyncError(`${source}: dependencies is missing`);
   edit(dependencies);
@@ -818,11 +881,6 @@ async function editOverlayPackageJson(
   await mkdir(dirname(file), { recursive: true });
   await writeJson(file, pkg);
 }
-
-type SchemaLib = "zod" | "effect";
-type OverlaySet = "effect-sqlite" | "zod-postgres" | "effect-postgres";
-
-const OVERLAY_SETS: OverlaySet[] = ["effect-sqlite", "zod-postgres", "effect-postgres"];
 
 const PG_REMOVALS = ["server/drizzle.config.ts", "server/drizzle/"];
 
@@ -877,7 +935,7 @@ const PG_ENVIRONMENT_SECTION = [
   "| Variable | Default | Notes |",
   "| --- | --- | --- |",
   "| `PORT` | `3000` | Integer, 1-65535 |",
-  "| `DATABASE_URL` | required | `postgres://` or `postgresql://`; the server refuses to boot without it |",
+  "| `DATABASE_URL` | required | `postgres://` or `postgresql://` with a host and database path |",
   "| `CLIENT_DIST` | `client/dist` | Client build directory; absolute, or relative to the repository root |",
   "| `NODE_ENV` | `development` | `development`, `test`, or `production` |",
 ].join("\n");
@@ -885,7 +943,7 @@ const PG_ENVIRONMENT_SECTION = [
 const PG_DATABASE_SECTION = [
   "## Database",
   "",
-  "- Required: `DATABASE_URL` (`postgres://` or `postgresql://`)",
+  "- Required: `DATABASE_URL` (`postgres://` or `postgresql://`) with a host and database path",
   "- The server connects with `postgres.js` through Drizzle's `postgres-js` adapter",
   "- Startup applies pending migrations automatically; logs show host and database name only, never credentials",
   "- Behind a transaction-mode pooler (PgBouncer, some hosted poolers) prepared statements fail: connect through the direct port for migrations, or pass `prepare: false` to `postgres()` if the provider requires it",
@@ -911,23 +969,11 @@ const PG_README_SECTIONS = [
   { heading: "Database", body: PG_DATABASE_SECTION, sentinel: "DATABASE_PATH" },
 ];
 
-const PG_LAYOUT_EDITS: Record<SchemaLib, [string, string]> = {
-  zod: [
-    "- `server/` — NestJS/Fastify on Bun, oRPC v1, Effect, Zod, Drizzle, SQLite",
-    "- `server/` — NestJS/Fastify on Bun, oRPC v1, Effect, Zod, Drizzle, PostgreSQL",
-  ],
-  effect: [
-    "- `server/` — NestJS/Fastify on Bun, oRPC v1, Effect, Drizzle, SQLite",
-    "- `server/` — NestJS/Fastify on Bun, oRPC v1, Effect, Drizzle, PostgreSQL",
-  ],
-};
+const PG_LAYOUT_EDIT: [string, string] = ["Drizzle, SQLite", "Drizzle, PostgreSQL"];
 
 const EFFECT_README_EDITS: Array<[string, string]> = [
   ["Zod validates request bodies;", "Effect Schema validates request bodies;"],
-  [
-    "- `server/` — NestJS/Fastify on Bun, oRPC v1, Effect, Zod, Drizzle, SQLite",
-    "- `server/` — NestJS/Fastify on Bun, oRPC v1, Effect, Drizzle, SQLite",
-  ],
+  ["Effect, Zod, Drizzle", "Effect, Drizzle"],
 ];
 
 interface OverlayReadmeOptions {
@@ -938,10 +984,11 @@ interface OverlayReadmeOptions {
 async function writeOverlayReadme(
   flavor: Flavor,
   outRoot: string,
+  templatesRoot: string,
   options: OverlayReadmeOptions = {},
 ): Promise<void> {
   const where = `README.md overlay (${flavor})`;
-  let text = await readFile(join(TEMPLATES_ROOT, flavor, "README.md"), "utf8");
+  let text = await readFile(join(templatesRoot, flavor, "README.md"), "utf8");
   for (const section of options.sections ?? []) {
     text = replaceH2(text, section.heading, section.body, section.sentinel, where);
   }
@@ -959,15 +1006,27 @@ async function writeRemovals(outRoot: string): Promise<void> {
   await writeFile(file, `${JSON.stringify(PG_REMOVALS, null, 2)}\n`);
 }
 
-async function writeEffectSqliteOverlay(flavor: Flavor, outRoot: string): Promise<void> {
-  await writeOverlayFile(
-    outRoot,
-    "shared/notes.contract.ts",
-    "shared/variants/effect/notes.contract.ts",
-  );
-  await writeOverlayFile(outRoot, "server/src/env.ts", "server/src/variants/effect/env.ts", [
-    ['resolve(import.meta.dir, "../../../..")', 'resolve(import.meta.dir, "../..")'],
-  ]);
+async function writeEffectContract(outRoot: string): Promise<void> {
+  for (const file of await listFiles(join(REPO_ROOT, "shared/variants/effect"))) {
+    if (file !== "notes.contract.ts") throw new SyncError(`Unhandled effect variant file: ${file}`);
+    await writeOverlayFile(outRoot, `shared/${file}`, `shared/variants/effect/${file}`, [
+      ['from "../../notes.meta"', 'from "./notes.meta"'],
+    ]);
+  }
+}
+
+async function writeEffectSqliteOverlay(
+  flavor: Flavor,
+  outRoot: string,
+  templatesRoot: string,
+): Promise<void> {
+  await writeEffectContract(outRoot);
+  for (const file of await listFiles(join(REPO_ROOT, "server/src/variants/effect"))) {
+    if (file !== "env.ts") throw new SyncError(`Unhandled effect variant file: ${file}`);
+    await writeOverlayFile(outRoot, `server/src/${file}`, `server/src/variants/effect/${file}`, [
+      ['resolve(import.meta.dir, "../../../..")', 'resolve(import.meta.dir, "../..")'],
+    ]);
+  }
   await writeOverlayFile(outRoot, "server/test/env.test.ts", "server/test/env-effect.test.ts", [
     ['"@server/variants/effect/env"', '"@server/env"'],
   ]);
@@ -1009,23 +1068,25 @@ async function writeEffectSqliteOverlay(flavor: Flavor, outRoot: string): Promis
       delete dependencies["postgres"];
     },
   );
-  await writeOverlayReadme(flavor, outRoot, { edits: EFFECT_README_EDITS });
+  await writeOverlayReadme(flavor, outRoot, templatesRoot, { edits: EFFECT_README_EDITS });
 }
 
 async function writePostgresOverlay(
   flavor: Flavor,
   set: "zod-postgres" | "effect-postgres",
   outRoot: string,
+  templatesRoot: string,
 ): Promise<void> {
   const effect = set === "effect-postgres";
+  if (effect) {
+    const files = await listFiles(join(REPO_ROOT, "server/src/variants/effect-postgres"));
+    if (files.length !== 1 || files[0] !== "env.ts")
+      throw new SyncError(`Unhandled effect-postgres variant files: ${files.join(", ")}`);
+  }
 
-  await writeOverlayReadme(flavor, outRoot, {
+  await writeOverlayReadme(flavor, outRoot, templatesRoot, {
     sections: PG_README_SECTIONS,
-    edits: [
-      ...(effect ? EFFECT_README_EDITS : []),
-      ...PG_README_EDITS,
-      PG_LAYOUT_EDITS[effect ? "effect" : "zod"],
-    ],
+    edits: [PG_LAYOUT_EDIT, ...PG_README_EDITS, ...(effect ? EFFECT_README_EDITS : [])],
   });
 
   // The diagram must agree with the selected database: the overlay replaces
@@ -1043,50 +1104,50 @@ async function writePostgresOverlay(
     "cli/scripts/assets/architecture.postgres.svg",
   );
 
-  await writeOverlayFile(outRoot, "server/src/db.ts", "server/src/variants/postgres/db.ts", [
-    ['"@server/variants/postgres/schema"', '"@server/schema"'],
-    [
-      'new URL("../../../drizzle-pg", import.meta.url)',
-      'new URL("../drizzle-pg", import.meta.url)',
+  await writeOverlayFile(
+    outRoot,
+    "server/src/database-url.ts",
+    "server/src/variants/shared/database-url.ts",
+  );
+  const variantEdits: Record<string, Array<[string, string]>> = {
+    "db.ts": [
+      ['"@server/variants/postgres/schema"', '"@server/schema"'],
+      ['"@server/variants/postgres/env"', '"@server/env"'],
+      ['"../shared/database-url"', '"./database-url"'],
+      [
+        'new URL("../../../drizzle-pg", import.meta.url)',
+        'new URL("../drizzle-pg", import.meta.url)',
+      ],
     ],
-  ]);
-  await writeOverlayFile(
-    outRoot,
-    "server/src/schema.ts",
-    "server/src/variants/postgres/schema.ts",
-    [['"@server/variants/postgres/notes/schema"', '"@server/notes/schema"']],
-  );
-  await writeOverlayFile(
-    outRoot,
-    "server/src/notes/schema.ts",
-    "server/src/variants/postgres/notes/schema.ts",
-  );
-  await writeOverlayFile(
-    outRoot,
-    "server/src/notes/notes.service.ts",
-    "server/src/variants/postgres/notes/notes.service.ts",
-    [
+    "schema.ts": [['"@server/variants/postgres/notes/schema"', '"@server/notes/schema"']],
+    "notes/schema.ts": [],
+    "notes/notes.service.ts": [
       ['"@server/variants/postgres/schema"', '"@server/schema"'],
       ['"@server/variants/postgres/notes/schema"', '"@server/notes/schema"'],
     ],
-  );
-  await writeOverlayFile(outRoot, "server/src/index.ts", "server/src/variants/postgres/index.ts", [
-    ['"@server/variants/postgres/db"', '"@server/db"'],
-    ['"@server/variants/postgres/env"', '"@server/env"'],
-    ['"@server/variants/postgres/notes/notes.module"', '"@server/notes/notes.module"'],
-  ]);
-  await writeOverlayFile(
-    outRoot,
-    "server/src/env.ts",
-    effect ? "server/src/variants/effect-postgres/env.ts" : "server/src/variants/postgres/env.ts",
-    [['resolve(import.meta.dir, "../../../..")', 'resolve(import.meta.dir, "../..")']],
-  );
-  await writeOverlayFile(
-    outRoot,
-    "server/drizzle.config.ts",
-    "server/src/variants/postgres/drizzle.config.ts",
-    [["./src/variants/postgres/schema.ts", "./src/schema.ts"]],
-  );
+    "index.ts": [
+      ['"@server/variants/postgres/db"', '"@server/db"'],
+      ['"@server/variants/postgres/env"', '"@server/env"'],
+      ['"@server/variants/postgres/notes/notes.module"', '"@server/notes/notes.module"'],
+    ],
+    "env.ts": [
+      ['resolve(import.meta.dir, "../../../..")', 'resolve(import.meta.dir, "../..")'],
+      ['"../shared/database-url"', '"./database-url"'],
+    ],
+    "drizzle.config.ts": [["./src/variants/postgres/schema.ts", "./src/schema.ts"]],
+  };
+  for (const file of await listFiles(join(REPO_ROOT, "server/src/variants/postgres"))) {
+    if (file === "notes/notes.module.ts") continue; // Base module binds the overlaid service.
+    const edits = variantEdits[file];
+    if (!edits) throw new SyncError(`Unhandled postgres variant file: ${file}`);
+    const source =
+      file === "env.ts" && effect
+        ? "server/src/variants/effect-postgres/env.ts"
+        : `server/src/variants/postgres/${file}`;
+    const destination =
+      file === "drizzle.config.ts" ? "server/drizzle.config.ts" : `server/src/${file}`;
+    await writeOverlayFile(outRoot, destination, source, edits);
+  }
   for (const file of await listFiles(join(REPO_ROOT, "server/drizzle-pg"))) {
     await writeOverlayFile(outRoot, `server/drizzle-pg/${file}`, `server/drizzle-pg/${file}`);
   }
@@ -1131,15 +1192,10 @@ async function writePostgresOverlay(
       ['"@server/variants/postgres/env"', '"@server/env"'],
     ],
   );
-  // Shared harness; same relative import ("./test-database") in the scaffold.
   await writeOverlayFile(outRoot, "server/test/test-database.ts", "server/test/test-database.ts");
 
   if (effect) {
-    await writeOverlayFile(
-      outRoot,
-      "shared/notes.contract.ts",
-      "shared/variants/effect/notes.contract.ts",
-    );
+    await writeEffectContract(outRoot);
     await writeOverlayFile(
       outRoot,
       "server/test/contract.test.ts",
@@ -1182,9 +1238,14 @@ async function writePostgresOverlay(
   await writeRemovals(outRoot);
 }
 
-async function writeOverlaySet(flavor: Flavor, set: OverlaySet, outRoot: string): Promise<void> {
-  if (set === "effect-sqlite") return writeEffectSqliteOverlay(flavor, outRoot);
-  return writePostgresOverlay(flavor, set, outRoot);
+async function writeOverlaySet(
+  flavor: Flavor,
+  set: OverlaySet,
+  outRoot: string,
+  templatesRoot: string,
+): Promise<void> {
+  if (set === "effect-sqlite") return writeEffectSqliteOverlay(flavor, outRoot, templatesRoot);
+  return writePostgresOverlay(flavor, set, outRoot, templatesRoot);
 }
 
 async function copyTrackedFile(file: string, outRoot: string): Promise<void> {
@@ -1197,32 +1258,19 @@ async function copyTrackedFile(file: string, outRoot: string): Promise<void> {
   await writeFile(destination, data);
 }
 
-async function countFiles(dir: string): Promise<number> {
-  let total = 0;
-  for (const entry of await readdir(dir, { withFileTypes: true })) {
-    if (entry.isDirectory()) total += await countFiles(join(dir, entry.name));
-    else total += 1;
-  }
-  return total;
+function countFiles(dir: string): number {
+  return [...assembled.keys()].filter((file) => file.startsWith(`${dir}${sep}`)).length;
 }
 
-async function listFiles(dir: string, base = ""): Promise<string[]> {
-  const files: string[] = [];
-  for (const entry of await readdir(dir, { withFileTypes: true })) {
-    const path = base === "" ? entry.name : `${base}/${entry.name}`;
-    if (entry.isDirectory()) files.push(...(await listFiles(join(dir, entry.name), path)));
-    else if (entry.isFile()) files.push(path);
-  }
-  return files;
-}
+const listFiles = walkFiles;
 
-async function formatTemplates(): Promise<void> {
+async function formatTemplates(templatesRoot: string, overlaysRoot: string): Promise<void> {
   // Explicit file paths bypass Oxfmt's directory walk, which honors the root
   // .gitignore entry for cli/templates/. Run from cli/, which has the
   // package.json Vite+ requires. Unsupported extensions are skipped.
   const files = [
-    ...(await listFiles(TEMPLATES_ROOT, "templates")),
-    ...(await listFiles(OVERLAYS_ROOT, "overlays")),
+    ...(await listFiles(templatesRoot, relative(CLI_ROOT, templatesRoot))),
+    ...(await listFiles(overlaysRoot, relative(CLI_ROOT, overlaysRoot))),
   ];
   const result = spawnSync(process.execPath, [VP_BIN, "fmt", ...files], {
     cwd: CLI_ROOT,
@@ -1232,26 +1280,29 @@ async function formatTemplates(): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  await rm(TEMPLATES_ROOT, { recursive: true, force: true });
-  await rm(OVERLAYS_ROOT, { recursive: true, force: true });
+  const templatesRoot = join(ASSEMBLY_ROOT, "templates");
+  const overlaysRoot = join(ASSEMBLY_ROOT, "overlays");
   for (const flavor of FLAVORS) {
-    const outRoot = join(TEMPLATES_ROOT, flavor);
+    const outRoot = join(templatesRoot, flavor);
     for (const file of await sourceFiles(flavor)) {
       await copyTrackedFile(file, outRoot);
     }
     await transform(flavor, outRoot);
-    console.log(
-      `synced ${flavor}: ${await countFiles(outRoot)} files -> ${relative(REPO_ROOT, outRoot)}`,
-    );
+    console.log(`assembled ${flavor}: ${countFiles(outRoot)} files`);
     for (const set of OVERLAY_SETS) {
-      const overlayRoot = join(OVERLAYS_ROOT, flavor, set);
-      await writeOverlaySet(flavor, set, overlayRoot);
-      console.log(
-        `synced ${flavor} overlay ${set}: ${await countFiles(overlayRoot)} files -> ${relative(REPO_ROOT, overlayRoot)}`,
-      );
+      const overlayRoot = join(overlaysRoot, flavor, set);
+      await writeOverlaySet(flavor, set, overlayRoot, templatesRoot);
+      console.log(`assembled ${flavor} overlay ${set}: ${countFiles(overlayRoot)} files`);
     }
   }
-  await formatTemplates();
+  await rm(TEMPLATES_ROOT, { recursive: true, force: true });
+  await rm(OVERLAYS_ROOT, { recursive: true, force: true });
+  for (const [file, data] of assembled) {
+    const destination = join(CLI_ROOT, relative(ASSEMBLY_ROOT, file));
+    await diskMkdir(dirname(destination), { recursive: true });
+    await diskWriteFile(destination, data);
+  }
+  await formatTemplates(TEMPLATES_ROOT, OVERLAYS_ROOT);
 }
 
 main().catch((error: unknown) => {

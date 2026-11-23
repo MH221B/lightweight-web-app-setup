@@ -1,7 +1,8 @@
 import { mkdir, readFile, readdir, rm, rmdir, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { styleText } from "node:util";
+import { DOTFILES, overlaySetFor, type DbEngine, type SchemaLib } from "./template-config.ts";
+export type { DbEngine, SchemaLib } from "./template-config.ts";
 import {
   findLeftovers,
   humanize,
@@ -11,14 +12,15 @@ import {
 } from "./rename.ts";
 
 const DEFAULT_TEMPLATES_DIR = fileURLToPath(new URL("../templates", import.meta.url));
-const DOTFILES: Record<string, string> = {
-  _gitattributes: ".gitattributes",
-  _gitignore: ".gitignore",
-  _npmrc: ".npmrc",
-};
+const DOTFILE_NAMES = Object.fromEntries(
+  Object.entries(DOTFILES).map(([name, mapped]) => [mapped, name]),
+);
 
-export type SchemaLib = "zod" | "effect";
-export type DbEngine = "sqlite" | "postgres";
+export const COMBOS = (["react", "angular"] as const).flatMap((flavor) =>
+  (["zod", "effect"] as const).flatMap((schema) =>
+    (["sqlite", "postgres"] as const).map((db) => ({ flavor, schema, db })),
+  ),
+);
 
 export interface ScaffoldOptions {
   flavor: Flavor;
@@ -40,17 +42,12 @@ export interface ScaffoldResult {
   removed: string[];
 }
 
-export function overlaySetFor(schema: SchemaLib, db: DbEngine): string | null {
-  if (db === "postgres") return schema === "effect" ? "effect-postgres" : "zod-postgres";
-  return schema === "effect" ? "effect-sqlite" : null;
-}
-
 export function templatesRoot(): string {
   return resolve(process.env.MH_STACK_TEMPLATES_DIR ?? DEFAULT_TEMPLATES_DIR);
 }
 
 function mappedName(name: string): string {
-  return DOTFILES[name] ?? name;
+  return DOTFILE_NAMES[name] ?? name;
 }
 
 async function copyTree(
@@ -58,6 +55,7 @@ async function copyTree(
   destination: string,
   written: string[],
   skipped: string[],
+  overlay = false,
   base = "",
 ): Promise<void> {
   await mkdir(destination, { recursive: true });
@@ -67,75 +65,51 @@ async function copyTree(
     const to = join(destination, name);
     const path = base === "" ? name : `${base}/${name}`;
     if (entry.isDirectory()) {
-      await copyTree(from, to, written, skipped, path);
+      await copyTree(from, to, written, skipped, overlay, path);
     } else if (entry.isFile()) {
-      await mkdir(dirname(to), { recursive: true });
-      try {
-        // "wx" fails instead of truncating: a merge never destroys a user file.
-        await writeFile(to, await readFile(from), { flag: "wx" });
-        written.push(path);
-      } catch (error) {
-        if ((error as { code?: string }).code !== "EEXIST") throw error;
-        skipped.push(path);
-      }
-    }
-  }
-}
-
-async function copyOverlayTree(
-  source: string,
-  destination: string,
-  written: string[],
-  skipped: string[],
-  base = "",
-): Promise<void> {
-  await mkdir(destination, { recursive: true });
-  for (const entry of await readdir(source, { withFileTypes: true })) {
-    const from = join(source, entry.name);
-    const name = mappedName(entry.name);
-    const to = join(destination, name);
-    const path = base === "" ? name : `${base}/${name}`;
-    if (entry.isDirectory()) {
-      await copyOverlayTree(from, to, written, skipped, path);
-    } else if (entry.isFile()) {
-      if (path === "removals.json") continue;
+      if (overlay && path === "removals.json") continue;
       await mkdir(dirname(to), { recursive: true });
       const data = await readFile(from);
-      if (written.includes(path)) {
-        // The base tree wrote this path, so the overlay replaces it.
+      if (overlay && written.includes(path)) {
         await writeFile(to, data);
         continue;
       }
-      // The tree never wrote it (the user owned it, or the merge skipped it):
-      // create exclusively so a user file is never destroyed.
       try {
+        // "wx" fails instead of truncating: a merge never destroys a user file.
         await writeFile(to, data, { flag: "wx" });
         written.push(path);
       } catch (error) {
         if ((error as { code?: string }).code !== "EEXIST") throw error;
-        if (!skipped.includes(path)) skipped.push(path);
+        if (overlay) throw new Error(`Overlay conflicts with an existing file: ${path}`);
+        skipped.push(path);
       }
-    }
+    } else throw new Error(`Unsupported template entry: ${from}`);
   }
 }
 
-async function applyRemovals(
-  overlayDir: string,
-  targetDir: string,
-  written: string[],
-): Promise<string[]> {
+async function readRemovals(overlayDir: string): Promise<string[]> {
   const file = join(overlayDir, "removals.json");
-  const info = await stat(file).catch(() => null);
-  if (!info?.isFile()) return [];
-
+  const info = await stat(file).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  });
+  if (!info) return [];
+  if (!info.isFile()) throw new Error(`Invalid removals.json in ${overlayDir}`);
   const parsed = JSON.parse(await readFile(file, "utf8")) as unknown;
   if (!Array.isArray(parsed) || parsed.some((entry) => typeof entry !== "string")) {
     throw new Error(`Invalid removals.json in ${overlayDir}`);
   }
+  return parsed as string[];
+}
 
+async function applyRemovals(
+  parsed: string[],
+  targetDir: string,
+  written: string[],
+): Promise<string[]> {
   const removed: string[] = [];
   const prunable = new Set<string>();
-  for (const entry of parsed as string[]) {
+  for (const entry of parsed) {
     const directory = entry.endsWith("/");
     const path = directory ? entry.slice(0, -1) : entry;
     const targets = written.filter(
@@ -181,6 +155,13 @@ function parentPath(path: string): string {
 }
 
 export async function scaffold(options: ScaffoldOptions): Promise<ScaffoldResult> {
+  if (
+    !COMBOS.some(
+      ({ flavor, schema, db }) =>
+        flavor === options.flavor && schema === options.schema && db === options.db,
+    )
+  )
+    throw new Error("Unsupported scaffold combination");
   const invalid = validateProjectName(options.projectName);
   if (invalid) throw new Error(invalid);
 
@@ -193,29 +174,39 @@ export async function scaffold(options: ScaffoldOptions): Promise<ScaffoldResult
     );
   }
 
-  const targetDir = resolve(options.targetDir);
-  await mkdir(targetDir, { recursive: true });
-  const written: string[] = [];
-  const skipped: string[] = [];
-  await copyTree(templateDir, targetDir, written, skipped);
-
-  let removed: string[] = [];
   const set = overlaySetFor(options.schema, options.db);
-  if (set !== null) {
-    const overlayDir = join(dirname(templatesDir), "overlays", options.flavor, set);
+  const overlayDir =
+    set === null ? null : join(dirname(templatesDir), "overlays", options.flavor, set);
+  let removals: string[] = [];
+  if (overlayDir !== null) {
     const overlayInfo = await stat(overlayDir).catch(() => null);
     if (!overlayInfo?.isDirectory()) {
       throw new Error(
         `Missing overlay "${set}" for "${options.flavor}" at ${overlayDir}. Run "bun run templates:sync".`,
       );
     }
-    // Removals first: the pg set then writes its own drizzle.config.ts over the freed path.
-    removed = await applyRemovals(overlayDir, targetDir, written);
-    await copyOverlayTree(overlayDir, targetDir, written, skipped);
+    removals = await readRemovals(overlayDir);
   }
+  const targetDir = resolve(options.targetDir);
+  if (set === null) {
+    for (const path of ["server/src/env.ts", "shared/notes.contract.ts"]) {
+      const existing = await stat(join(targetDir, path)).catch((error: NodeJS.ErrnoException) => {
+        if (error.code === "ENOENT") return null;
+        throw error;
+      });
+      if (existing) throw new Error(`Cannot determine existing scaffold variant: ${path}`);
+    }
+  }
+  await mkdir(targetDir, { recursive: true });
+  const written: string[] = [];
+  const skipped: string[] = [];
+  await copyTree(templateDir, targetDir, written, skipped);
 
-  for (const path of skipped) {
-    console.log(`${styleText("yellow", "!")} skipped existing file: ${path}`);
+  let removed: string[] = [];
+  if (overlayDir !== null) {
+    // Removals first: the pg set then writes its own drizzle.config.ts over the freed path.
+    removed = await applyRemovals(removals, targetDir, written);
+    await copyTree(overlayDir, targetDir, written, skipped, true);
   }
 
   const displayName = humanize(options.projectName);

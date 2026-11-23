@@ -24,5 +24,3 @@ export function parseEnv(source: Record<string, string | undefined> = process.en
   const raw = Schema.decodeUnknownSync(EnvSchema)(source);
   return { ...raw, CLIENT_DIST: resolve(repoRoot, raw.CLIENT_DIST) };
 }
-
-export const env = parseEnv();

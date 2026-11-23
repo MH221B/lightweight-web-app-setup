@@ -15,7 +15,7 @@ import compress from "@fastify/compress";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Http2ServerRequest, Http2ServerResponse } from "node:http2";
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { createNotFoundHandler } from "@server/hosting";
+import { createNotFoundHandler, type HostingOptions } from "@server/hosting";
 import { NotesModule } from "@server/notes/notes.module";
 
 // Nest wraps its own errors in HttpException; body errors raised by Fastify
@@ -31,23 +31,16 @@ const statusOf = (error: unknown) => {
 
 export async function createApp(
   db: object,
-  options: { serveClient?: boolean; clientDist?: string; notesModule?: Type<unknown> } = {},
+  options: HostingOptions & { notesModule?: Type<unknown> } = {},
 ) {
   const notFound = createNotFoundHandler(options);
+  const fastifyErrors = new WeakMap<FastifyRequest, unknown>();
   @Global()
   @Module({ providers: [{ provide: "DATABASE", useValue: db }], exports: ["DATABASE"] })
   class DatabaseModule {}
 
   @Module({
-    imports: [
-      ORPCModule.forRoot({
-        customErrorResponseBodyEncoder(error) {
-          return { error: error.status >= 500 ? "Internal server error" : error.message };
-        },
-      }),
-      DatabaseModule,
-      options.notesModule ?? NotesModule,
-    ],
+    imports: [ORPCModule.forRoot({}), DatabaseModule, options.notesModule ?? NotesModule],
   })
   class AppModule {}
 
@@ -57,10 +50,16 @@ export async function createApp(
       const request = host.switchToHttp().getRequest<FastifyRequest>();
       const reply = host.switchToHttp().getResponse<FastifyReply>();
       const status = statusOf(error);
-      if (status === 400) return reply.status(400).send({ error: "Invalid JSON body" });
+      const original = fastifyErrors.get(request) ?? error;
+      if (
+        status === 400 &&
+        ((original as { code?: unknown } | null)?.code === "FST_ERR_CTP_INVALID_JSON_BODY" ||
+          (original as { cause?: unknown } | null)?.cause instanceof SyntaxError)
+      )
+        return reply.status(400).send({ error: "Invalid JSON body" });
       if (status === 404) return notFound(request, reply);
       if (status >= 400 && status < 500) {
-        const message = status === 413 ? "Payload too large" : "Request failed";
+        const message = status === 413 ? "Payload too large" : `Request failed (${status})`;
         return reply.status(status).send({ error: message });
       }
       console.error(error);
@@ -85,6 +84,13 @@ export async function createApp(
     }),
     { logger: false },
   );
+  app
+    .getHttpAdapter()
+    .getInstance()
+    .addHook("onError", (request, _reply, error, done) => {
+      fastifyErrors.set(request, error);
+      done();
+    });
   await app.register(compress);
   await app.getHttpAdapter().getInstance().after();
   if (options.serveClient) app.getHttpAdapter().getInstance().get("/*", notFound);

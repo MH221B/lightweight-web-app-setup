@@ -15,7 +15,7 @@
     "build": "bun build src/index.ts --target=node --format=esm --outfile dist/index.js --external @inquirer/prompts",
     "templates:sync": "bun scripts/sync-templates.ts",
     "start": "node dist/index.js",
-    "test": "bun test test",
+    "test": "bun run templates:sync && bun run build && bun test test",
     "prepare": "bun run templates:sync && bun run build"
   },
   "dependencies": {

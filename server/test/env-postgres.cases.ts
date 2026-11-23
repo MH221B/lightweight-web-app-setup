@@ -38,10 +38,7 @@ export function describeEnvCases(name: string, parseEnv: ParseEnv): void {
       });
     });
 
-    test("resolves a relative CLIENT_DIST from the repository root", () => {
-      expect(parseEnv({ DATABASE_URL: url, CLIENT_DIST: "custom/dist" }).CLIENT_DIST).toBe(
-        resolve(repoRoot, "custom/dist"),
-      );
+    test("does not use a sqlite fallback", () => {
       // No sqlite fallback: DATABASE_PATH is ignored and never satisfies the contract.
       expect(() => parseEnv({ DATABASE_PATH: ":memory:" })).toThrow();
       expect(parseEnv({ DATABASE_URL: url })).not.toHaveProperty("DATABASE_PATH");
@@ -64,14 +61,13 @@ export function describeEnvCases(name: string, parseEnv: ParseEnv): void {
         // only looks like one because it contains spaces.
         { DATABASE_URL: "postgres://" },
         { DATABASE_URL: "postgres://not a valid host" },
+        { DATABASE_URL: "postgres://localhost" },
+        { DATABASE_URL: "postgres://user@localhost/" },
       ]) {
         expect(() => parseEnv(source)).toThrow();
       }
       expect(parseEnv({ DATABASE_URL: "postgresql://localhost/db" }).DATABASE_URL).toBe(
         "postgresql://localhost/db",
-      );
-      expect(parseEnv({ DATABASE_URL: "postgres://localhost" }).DATABASE_URL).toBe(
-        "postgres://localhost",
       );
     });
   });

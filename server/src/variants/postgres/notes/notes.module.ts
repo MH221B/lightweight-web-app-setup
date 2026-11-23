@@ -1,25 +1,20 @@
 import { Module } from "@nestjs/common";
-import { ImplementInterceptor, ORPC_MODULE_CONFIG_SYMBOL, type ORPCModuleConfig } from "@orpc/nest";
-import { NOTE_MAX_LENGTH } from "@shared/notes.contract";
+import { ImplementInterceptor, ORPC_MODULE_CONFIG_SYMBOL } from "@orpc/nest";
 import { NotesController } from "@server/notes/notes.controller";
-import { NOTES_STORAGE_ERROR } from "@server/notes/notes.errors";
+import { NOTES_ORPC_CONFIG } from "@server/notes/notes.errors";
 import { NotesService } from "@server/notes/notes.service";
 import { NotesService as PgNotesService } from "@server/variants/postgres/notes/notes.service";
 
 @Module({
   providers: [
-    { provide: NotesService, useClass: PgNotesService },
+    {
+      provide: NotesService,
+      useClass: PgNotesService satisfies { prototype: Pick<NotesService, "list" | "create"> },
+    },
     ImplementInterceptor,
     {
       provide: ORPC_MODULE_CONFIG_SYMBOL,
-      useValue: {
-        customErrorResponseBodyEncoder(error) {
-          if (error.status === 400)
-            return { error: `Note text must be 1-${NOTE_MAX_LENGTH} characters` };
-          if (error.code === NOTES_STORAGE_ERROR) return { error: error.message };
-          return { error: error.status >= 500 ? "Internal server error" : error.message };
-        },
-      } satisfies ORPCModuleConfig,
+      useValue: NOTES_ORPC_CONFIG,
     },
   ],
   controllers: [NotesController],

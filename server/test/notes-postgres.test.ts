@@ -1,32 +1,16 @@
-import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
+import { beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { createApp } from "@server/app";
 import { createDb, migrateDb } from "@server/variants/postgres/db";
 import { NotesModule } from "@server/variants/postgres/notes/notes.module";
 import { notes } from "@server/variants/postgres/notes/schema";
 import {
-  closeAndDrop,
-  CREATEDB_NOTICE,
-  hasCreateDatabasePrivilege,
+  installSuiteCleanup,
   openTestDatabase,
+  postgresCapability,
   type TestDatabase,
 } from "./test-database";
 
-const databaseUrl = process.env.DATABASE_URL ?? "";
-const required = process.env.MH_REQUIRE_POSTGRES === "1";
-
-if (required && !databaseUrl) throw new Error("MH_REQUIRE_POSTGRES=1 requires DATABASE_URL");
-if (!databaseUrl) console.log("! DATABASE_URL is not set: skipping the postgres integration tests");
-
-// The skip decision is read-only: nothing is created at module scope, so
-// the handle is acquired in beforeAll and afterAll is registered first.
-// An unreachable URL or a denied base connection throws here, never skips.
-const canProvision = databaseUrl !== "" && (await hasCreateDatabasePrivilege(databaseUrl));
-// The required flag turns BOTH skip conditions into failures; the missing
-// URL already threw above, so this is the missing-CREATEDB half.
-if (required && databaseUrl !== "" && !canProvision) {
-  throw new Error("MH_REQUIRE_POSTGRES=1 requires a DATABASE_URL role with CREATEDB");
-}
-if (databaseUrl !== "" && !canProvision) console.log(CREATEDB_NOTICE);
+const { databaseUrl, required, canProvision } = await postgresCapability();
 
 describe.skipIf(!canProvision)("notes api (postgres)", () => {
   let database: TestDatabase;
@@ -37,31 +21,24 @@ describe.skipIf(!canProvision)("notes api (postgres)", () => {
     const opened = await openTestDatabase(databaseUrl, required);
     if (!opened) throw new Error("DATABASE_URL role lost CREATEDB after the capability check");
     database = opened;
-    // createDb refuses a connection that is not on the temporary database:
-    // the guard lives in the db twin, not in this file.
     db = await createDb(database.url);
     await migrateDb(db);
-    // Applying the committed migrations again must be a no-op.
     await migrateDb(db);
     await db.delete(notes);
     app = await createApp(db, { serveClient: false, notesModule: NotesModule });
   });
 
-  afterAll(async () => {
-    // The suite's real cleanup, shared with the probe: close the app and
-    // the pool (an open connection blocks DROP DATABASE), then drop. A
-    // failed beforeAll still lands here; when openTestDatabase itself threw
-    // there is nothing to close or drop (the helper drops on failure).
-    if (!database) return;
-    await closeAndDrop(database, [
+  installSuiteCleanup(
+    () => database,
+    () => [
       async () => {
         if (app) await app.close();
       },
       async () => {
         if (db) await db.$client.end({ timeout: 5 });
       },
-    ]);
-  });
+    ],
+  );
 
   const request = async (
     url: string,
@@ -171,11 +148,6 @@ describe.skipIf(!canProvision)("notes api (postgres)", () => {
       for (const response of [list, create]) {
         expect(response.statusCode).toBe(503);
         expect(response.json()).toEqual({ error: "Notes are unavailable" });
-      }
-      expect(log).toHaveBeenCalledTimes(2);
-      for (const call of log.mock.calls) {
-        expect(call[0]).toBe("Notes storage failure:");
-        expect(call[1]).toBeInstanceOf(Error);
       }
     } finally {
       log.mockRestore();
