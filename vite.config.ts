@@ -14,6 +14,8 @@ export default defineConfig({
       typeCheck: true,
     },
     ignorePatterns: [
+      "cli/dist/**",
+      "cli/templates/**",
       "client/dist/**",
       "client-angular/**",
       "client/src/routeTree.gen.ts",
@@ -26,6 +28,7 @@ export default defineConfig({
   fmt: {
     ignorePatterns: [
       "bun.lock",
+      "cli/dist/**",
       "client/dist/**",
       "client-angular/dist/**",
       "client-angular/.angular/**",

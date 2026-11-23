@@ -22,3 +22,18 @@ jobs:
           bun-version: "1.4.4"
       - run: bun install --frozen-lockfile
       - run: bun run verify
+      - name: Pack the CLI
+        run: |
+          mkdir -p artifact
+          cd cli
+          npm pack --pack-destination ../artifact
+          cd ..
+          tar -xzf artifact/mh-stack-*.tgz -C artifact
+      - name: Install the packed runtime dependency
+        working-directory: artifact/package
+        run: npm install --omit=dev --ignore-scripts
+      - name: Artifact smoke
+        env:
+          MH_STACK_TEMPLATES_DIR: ${{ github.workspace }}/artifact/package/templates
+          MH_STACK_CLI_ENTRY: ${{ github.workspace }}/artifact/package/dist/index.js
+        run: bun test cli/test
