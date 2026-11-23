@@ -1,5 +1,6 @@
 import { confirm, input, select } from "@inquirer/prompts";
 import { validateProjectName, type Flavor } from "./rename.ts";
+import type { SchemaLib } from "./scaffold.ts";
 
 export async function askProjectName(): Promise<string> {
   return input({
@@ -21,6 +22,17 @@ export async function askFlavor(): Promise<Flavor> {
 
 export async function askDirectory(projectName: string): Promise<string> {
   return input({ message: "Target directory:", default: projectName });
+}
+
+export async function askSchemaLibrary(): Promise<SchemaLib> {
+  return select<SchemaLib>({
+    message: "Schema library:",
+    default: "zod",
+    choices: [
+      { name: "Zod — default", value: "zod" },
+      { name: "Effect Schema", value: "effect" },
+    ],
+  });
 }
 
 export async function confirmNonEmpty(targetDir: string): Promise<boolean> {

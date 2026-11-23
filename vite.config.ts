@@ -16,6 +16,7 @@ export default defineConfig({
     ignorePatterns: [
       "cli/dist/**",
       "cli/templates/**",
+      "cli/overlays/**",
       "client/dist/**",
       "client-angular/**",
       "client/src/routeTree.gen.ts",

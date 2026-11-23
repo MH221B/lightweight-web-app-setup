@@ -6,13 +6,14 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { bootstrap, quotePath } from "../src/bootstrap.ts";
 import { findLeftovers, type Flavor } from "../src/rename.ts";
-import { scaffold, templatesRoot } from "../src/scaffold.ts";
+import { scaffold, templatesRoot, type SchemaLib } from "../src/scaffold.ts";
 
 interface PackageJson {
   name?: string;
   workspaces?: string[];
   scripts?: Record<string, string>;
   overrides?: Record<string, string>;
+  dependencies?: Record<string, string>;
 }
 
 interface AngularJson {
@@ -57,7 +58,60 @@ async function walk(dir: string, base = ""): Promise<string[]> {
   return files;
 }
 
-async function assertScaffold(flavor: Flavor, dir: string): Promise<void> {
+async function assertScaffold(
+  flavor: Flavor,
+  dir: string,
+  schema: SchemaLib = "zod",
+): Promise<void> {
+  const sharedPkg = await readJson<PackageJson>(join(dir, "shared", "package.json"));
+  const serverPkg = await readJson<PackageJson>(join(dir, "server", "package.json"));
+  const contract = await readFile(join(dir, "shared", "notes.contract.ts"), "utf8");
+  const env = await readFile(join(dir, "server", "src", "env.ts"), "utf8");
+  const envTest = await readFile(join(dir, "server", "test", "env.test.ts"), "utf8");
+  const contractTest = await readFile(join(dir, "server", "test", "contract.test.ts"), "utf8");
+
+  expect(envTest).toContain('from "@server/env"');
+  expect(contractTest).toContain('from "@shared/notes.contract"');
+  expect(envTest).not.toContain("variants/effect");
+  expect(contractTest).not.toContain("variants/effect");
+  expect((await stat(join(dir, "server", "test", "env.cases.ts"))).isFile()).toBe(true);
+  expect((await stat(join(dir, "server", "test", "contract.cases.ts"))).isFile()).toBe(true);
+  expect(
+    await stat(join(dir, "server", "test", "env-effect.test.ts")).catch(() => null),
+  ).toBeNull();
+  expect(
+    await stat(join(dir, "server", "test", "contract-effect.test.ts")).catch(() => null),
+  ).toBeNull();
+  expect(await stat(join(dir, "shared", "variants")).catch(() => null)).toBeNull();
+  expect(await stat(join(dir, "server", "src", "variants")).catch(() => null)).toBeNull();
+  expect(env).toContain('resolve(import.meta.dir, "../..")');
+  expect(env).not.toContain('"../../../.."');
+
+  if (schema === "zod") {
+    expect(sharedPkg.dependencies).toEqual({
+      "@orpc/client": "1.16.2",
+      "@orpc/contract": "1.16.2",
+      "@orpc/openapi-client": "1.16.2",
+      zod: "3",
+    });
+    expect(serverPkg.dependencies?.zod).toBe("3");
+    expect(serverPkg.dependencies?.effect).toBe("4.1.0");
+    expect(contract).toContain('import { z } from "zod";');
+    expect(env).toContain('import { z } from "zod";');
+  } else {
+    expect(sharedPkg.dependencies).toEqual({
+      "@orpc/client": "1.16.2",
+      "@orpc/contract": "1.16.2",
+      "@orpc/openapi-client": "1.16.2",
+      effect: "4.1.0",
+    });
+    expect(serverPkg.dependencies?.zod).toBeUndefined();
+    expect(serverPkg.dependencies?.effect).toBe("4.1.0");
+    expect(contract).toContain('import { Schema, SchemaTransformation } from "effect";');
+    expect(env).toContain('import { Effect, Schema } from "effect";');
+    expect(contractTest).toContain("standardCheck");
+  }
+
   const chosen = flavor === "react" ? "client" : "client-angular";
   const other = flavor === "react" ? "client-angular" : "client";
 
@@ -170,18 +224,49 @@ async function assertScaffold(flavor: Flavor, dir: string): Promise<void> {
     expect(readme).not.toContain("React flavor");
     expect(readme).toContain("bun run dev:angular");
   }
+  expect(readme).toContain(
+    schema === "zod" ? "Zod validates request bodies;" : "Effect Schema validates request bodies;",
+  );
+  if (schema === "effect") {
+    expect(readme).toContain("oRPC v1, Effect, Drizzle, SQLite");
+    expect(readme).not.toContain("oRPC v1, Effect, Zod, Drizzle, SQLite");
+  }
 }
 
 test("scaffolds the react flavor", async () => {
   const dir = await makeTarget("react");
-  await scaffold({ flavor: "react", projectName: PROJECT, targetDir: dir });
+  await scaffold({ flavor: "react", projectName: PROJECT, targetDir: dir, schema: "zod" });
   await assertScaffold("react", dir);
 });
 
 test("scaffolds the angular flavor", async () => {
   const dir = await makeTarget("angular");
-  await scaffold({ flavor: "angular", projectName: PROJECT, targetDir: dir });
+  await scaffold({ flavor: "angular", projectName: PROJECT, targetDir: dir, schema: "zod" });
   await assertScaffold("angular", dir);
+});
+
+test("scaffolds the react flavor with effect schemas", async () => {
+  const dir = await makeTarget("react");
+  const result = await scaffold({
+    flavor: "react",
+    projectName: PROJECT,
+    targetDir: dir,
+    schema: "effect",
+  });
+  expect(result.schema).toBe("effect");
+  await assertScaffold("react", dir, "effect");
+});
+
+test("scaffolds the angular flavor with effect schemas", async () => {
+  const dir = await makeTarget("angular");
+  const result = await scaffold({
+    flavor: "angular",
+    projectName: PROJECT,
+    targetDir: dir,
+    schema: "effect",
+  });
+  expect(result.schema).toBe("effect");
+  await assertScaffold("angular", dir, "effect");
 });
 
 test("keeps existing files and reports the skip", async () => {
@@ -196,7 +281,12 @@ test("keeps existing files and reports the skip", async () => {
     lines.push(args.map(String).join(" "));
   });
   try {
-    const result = await scaffold({ flavor: "react", projectName: PROJECT, targetDir: dir });
+    const result = await scaffold({
+      flavor: "react",
+      projectName: PROJECT,
+      targetDir: dir,
+      schema: "zod",
+    });
     expect(result.skipped).toEqual(["README.md"]);
   } finally {
     log.mockRestore();
@@ -206,9 +296,49 @@ test("keeps existing files and reports the skip", async () => {
   expect(lines.some((line) => line.includes("skipped existing file: README.md"))).toBe(true);
 });
 
+test("keeps a user-owned file at an effect overlay destination", async () => {
+  const dir = await makeTarget("react");
+  // Deliberate split: `server/src/env.ts` is shipped by both the base tree and
+  // the overlay, so a pre-existing copy wins at both layers. The other overlay
+  // paths (contract, tests, manifests) are base-written and must still be
+  // replaced with the effect content in the same run.
+  const userEnv = join(dir, "server", "src", "env.ts");
+  const userText = "// hand-written env\nexport const env = { PORT: 4000 };\n";
+  await mkdir(dirname(userEnv), { recursive: true });
+  await writeFile(userEnv, userText);
+
+  const result = await scaffold({
+    flavor: "react",
+    projectName: PROJECT,
+    targetDir: dir,
+    schema: "effect",
+  });
+
+  expect(result.schema).toBe("effect");
+  expect(result.skipped).toEqual(["server/src/env.ts"]);
+  expect(await readFile(userEnv, "utf8")).toBe(userText);
+
+  const contract = await readFile(join(dir, "shared", "notes.contract.ts"), "utf8");
+  expect(contract).toContain('import { Schema, SchemaTransformation } from "effect";');
+  expect(await readFile(join(dir, "server", "test", "env.test.ts"), "utf8")).toContain(
+    'from "@server/env"',
+  );
+  const sharedPkg = await readJson<PackageJson>(join(dir, "shared", "package.json"));
+  expect(sharedPkg.dependencies?.effect).toBe("4.1.0");
+  expect(sharedPkg.dependencies?.zod).toBeUndefined();
+  const serverPkg = await readJson<PackageJson>(join(dir, "server", "package.json"));
+  expect(serverPkg.dependencies?.effect).toBe("4.1.0");
+  expect(serverPkg.dependencies?.zod).toBeUndefined();
+});
+
 test("scaffolds a numeric name with the fallback prefix", async () => {
   const dir = await makeTarget("angular", "123");
-  const result = await scaffold({ flavor: "angular", projectName: "123", targetDir: dir });
+  const result = await scaffold({
+    flavor: "angular",
+    projectName: "123",
+    targetDir: dir,
+    schema: "zod",
+  });
   expect(result.displayName).toBe("123");
 
   const angular = await readJson<AngularJson>(join(dir, "client-angular", "angular.json"));
@@ -220,7 +350,12 @@ test("scaffolds a numeric name with the fallback prefix", async () => {
 test("accepts the starter name as the project name", async () => {
   const name = "lightweight-web-app-starter";
   const dir = await makeTarget("react", name);
-  const result = await scaffold({ flavor: "react", projectName: name, targetDir: dir });
+  const result = await scaffold({
+    flavor: "react",
+    projectName: name,
+    targetDir: dir,
+    schema: "zod",
+  });
   expect(result.displayName).toBe("Lightweight Web App Starter");
   const pkg = await readJson<PackageJson>(join(dir, "package.json"));
   expect(pkg.name).toBe(name);
@@ -231,7 +366,7 @@ test("accepts the starter name as the project name", async () => {
 
 test("does not hide leftovers matching the project name", async () => {
   const dir = await makeTarget("react", "client-angular");
-  await scaffold({ flavor: "react", projectName: "client-angular", targetDir: dir });
+  await scaffold({ flavor: "react", projectName: "client-angular", targetDir: dir, schema: "zod" });
   const path = "unexpected.txt";
   await writeFile(join(dir, path), "client-angular");
   expect(await findLeftovers(dir, "react", "client-angular", [path])).toContain(
@@ -286,6 +421,7 @@ test("prints the flag recipe when stdin is not a TTY", () => {
   expect(output).toContain("mh-stack needs a TTY for prompts. Non-interactive usage:");
   expect(output).toContain("npx mh-stack --react --name my-app my-app");
   expect(output).toContain("npx mh-stack --angular --name my-app my-app");
+  expect(output).toContain("--zod | --effect");
 });
 
 test("spawned entry scaffolds the react flavor", async () => {
@@ -318,6 +454,32 @@ test("spawned entry scaffolds the angular flavor", async () => {
   expect(result.status).toBe(0);
   expect(result.stdout.split("\n")[0]).toBe(`mh-stack ${version}`);
   await assertScaffold("angular", dir);
+});
+
+test("spawned entry defaults to zod without a schema flag", async () => {
+  const dir = await makeTarget("react");
+  const env = { ...process.env, MH_STACK_TEMPLATES_DIR: templatesRoot() };
+  const result = spawnSync("node", [CLI_ENTRY, "--react", "--name", PROJECT, "--no-install", dir], {
+    encoding: "utf8",
+    env,
+  });
+  expect(result.status).toBe(0);
+  expect(result.stdout).not.toContain("Schema library:");
+  const contract = await readFile(join(dir, "shared", "notes.contract.ts"), "utf8");
+  expect(contract).toContain('import { z } from "zod";');
+  expect(contract).not.toContain('from "effect"');
+});
+
+test("spawned entry scaffolds the effect variant", async () => {
+  const dir = await makeTarget("angular");
+  const env = { ...process.env, MH_STACK_TEMPLATES_DIR: templatesRoot() };
+  const result = spawnSync(
+    "node",
+    [CLI_ENTRY, "--angular", "--effect", "--name", PROJECT, "--no-install", dir],
+    { encoding: "utf8", env },
+  );
+  expect(result.status).toBe(0);
+  await assertScaffold("angular", dir, "effect");
 });
 
 afterAll(async () => {

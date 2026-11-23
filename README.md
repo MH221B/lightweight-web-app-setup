@@ -6,7 +6,7 @@ A copyable Bun workspace with two client flavors — React 19 and Angular 22 —
 
 - **Clients:** React 19 on Vite+ with TanStack Router and Query; Angular 22 on the Angular CLI (standalone, zoneless, Signal Forms) with TanStack Angular Query.
 - **API:** NestJS controllers, modules, and services using Fastify on Bun.
-- **Shared data layer:** an oRPC v1 contract and framework-free oRPC fetch helpers in `shared/`. Effect Schema validates request bodies; both clients and the server use the same route and response types.
+- **Shared data layer:** an oRPC v1 contract and framework-free oRPC fetch helpers in `shared/`. Zod validates request bodies; both clients and the server use the same route and response types.
 - **Data:** Effect handles storage errors; Drizzle accesses SQLite through `bun:sqlite`.
 
 ![Notes request flow: the React and Angular clients share an oRPC v1 contract with the NestJS controller, which calls a service backed by Drizzle and SQLite.](architecture.svg)
@@ -157,6 +157,15 @@ PowerShell:
 $env:CLIENT_DIST = "client-angular/dist"; bun run start
 ```
 
+## Schema variants
+
+The live application validates with Zod. Effect Schema implementations ship as twins so the CLI can scaffold either library:
+
+- `shared/notes.contract.ts` (Zod) and `shared/variants/effect/notes.contract.ts` (Effect Schema)
+- `server/src/env.ts` (Zod) and `server/src/variants/effect/env.ts` (Effect Schema)
+
+`server/test/env.cases.ts` and `server/test/contract.cases.ts` hold the behavioral cases. `env.test.ts` and `contract.test.ts` run them against the live implementation; `env-effect.test.ts` and `contract-effect.test.ts` run the same cases against the twins. Effect still handles storage errors in both variants. A schema-behavior change updates both variants and the shared cases in the same change.
+
 ## Removing or renaming the Notes example
 
 Delete or replace these files together:
@@ -190,7 +199,7 @@ To rename rather than remove, replace `Notes`, `notes`, and `/api/notes` consist
 
 - `client/` — React 19, Vite+, TanStack Router and Query, oRPC OpenAPI client
 - `client-angular/` — Angular 22, Angular CLI, Signal Forms, TanStack Angular Query, oRPC OpenAPI client
-- `server/` — NestJS/Fastify on Bun, oRPC v1, Effect, Drizzle, SQLite
+- `server/` — NestJS/Fastify on Bun, oRPC v1, Effect, Zod, Drizzle, SQLite
 - `shared/` — the oRPC v1 API contract and the framework-free oRPC client both flavors import
 - `server/data/` — persistent SQLite files (ignored)
 
@@ -205,7 +214,7 @@ bun install --frozen-lockfile
 bun run verify
 ```
 
-Expected: `bun run check` (format, lint, typecheck, angular-eslint) and `bun run build` (React and Angular) exit 0; the integration tests report `18 pass`, `0 fail`.
+Expected: `bun run check` (format, lint, typecheck, angular-eslint) and `bun run build` (React and Angular) exit 0; the integration tests report `31 pass`, `0 fail`.
 
 Production check:
 

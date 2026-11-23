@@ -37,3 +37,47 @@ jobs:
           MH_STACK_TEMPLATES_DIR: ${{ github.workspace }}/artifact/package/templates
           MH_STACK_CLI_ENTRY: ${{ github.workspace }}/artifact/package/dist/index.js
         run: bun test cli/test
+  scaffold:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        flavor: [react, angular]
+        schema: [zod, effect]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.19.0"
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+      - run: bun install --frozen-lockfile
+      - name: Pack and extract the CLI
+        run: |
+          mkdir -p artifact
+          cd cli
+          npm pack --pack-destination ../artifact
+          cd ..
+          tar -xzf artifact/mh-stack-*.tgz -C artifact
+      - name: Install the packed runtime dependency
+        working-directory: artifact/package
+        run: npm install --omit=dev --ignore-scripts
+      - name: Scaffold
+        working-directory: artifact/package
+        run: node dist/index.js --${{ matrix.flavor }} --${{ matrix.schema }} --name ci-app --no-install "${{ runner.temp }}/ci-app-${{ matrix.flavor }}-${{ matrix.schema }}"
+      - name: Install the scaffolded project
+        working-directory: ${{ runner.temp }}/ci-app-${{ matrix.flavor }}-${{ matrix.schema }}
+        run: bun install
+      - name: Assert bun.lock resolves the selected schema library
+        working-directory: ${{ runner.temp }}/ci-app-${{ matrix.flavor }}-${{ matrix.schema }}
+        run: |
+          grep -A8 '"shared": {' bun.lock | grep -q "\"${{ matrix.schema }}\":"
+          if [ "${{ matrix.schema }}" = "zod" ]; then
+            grep -q 'zod@3\.' bun.lock
+          else
+            grep -q 'effect@4\.1\.0' bun.lock
+          fi
+      - name: Verify the scaffolded project
+        working-directory: ${{ runner.temp }}/ci-app-${{ matrix.flavor }}-${{ matrix.schema }}
+        run: bun run verify

@@ -11,6 +11,7 @@ interface PackageJson {
   workspaces?: string[];
   scripts?: Record<string, string>;
   overrides?: Record<string, string>;
+  dependencies?: Record<string, string>;
   [key: string]: unknown;
 }
 
@@ -18,6 +19,7 @@ const FLAVORS: Flavor[] = ["react", "angular"];
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const CLI_ROOT = join(REPO_ROOT, "cli");
 const TEMPLATES_ROOT = join(CLI_ROOT, "templates");
+const OVERLAYS_ROOT = join(CLI_ROOT, "overlays");
 const VP_BIN = join(REPO_ROOT, "node_modules", "vite-plus", "bin", "vp");
 
 const OTHER_CLIENT_DIR: Record<Flavor, string> = {
@@ -37,8 +39,15 @@ const EXCLUDED_PREFIXES = [
   "client/dist/",
   "node_modules/",
   "server/data/",
+  "server/src/variants/",
+  "shared/variants/",
 ];
-const EXCLUDED_FILES = new Set(["bun.lock", "client/src/routeTree.gen.ts"]);
+const EXCLUDED_FILES = new Set([
+  "bun.lock",
+  "client/src/routeTree.gen.ts",
+  "server/test/contract-effect.test.ts",
+  "server/test/env-effect.test.ts",
+]);
 // npm cannot pack these dotted names, so the sync stores them under a leading
 // underscore and the runtime maps them back (Task 4's DOTFILES).
 const DOTFILE_MAP: Record<string, string> = {
@@ -120,6 +129,7 @@ const README_SENTINELS: Record<string, string> = {
   Layout: "persistent SQLite files",
   Verification: "bun run verify",
   "Copying this baseline": "To start a new project",
+  "Schema variants": "shared/variants/effect/notes.contract.ts",
 };
 
 const README_SECTIONS: Record<Flavor, Array<{ heading: string; body: string | null }>> = {
@@ -203,6 +213,7 @@ bun run start
 - Default port: 3000. Override with \`PORT\`.
 - Default database: \`server/data/app.db\`. Override with \`DATABASE_PATH\`.`,
     },
+    { heading: "Schema variants", body: null },
     {
       heading: "Removing or renaming the Notes example",
       body: `## Removing or renaming the Notes example
@@ -253,7 +264,7 @@ bun install --frozen-lockfile
 bun run verify
 \`\`\`
 
-Expected: \`bun run check\` (format, lint, typecheck) and \`bun run build\` (React) exit 0; the integration tests report \`17 pass\`, \`0 fail\`.
+Expected: \`bun run check\` (format, lint, typecheck) and \`bun run build\` (React) exit 0; the integration tests report \`24 pass\`, \`0 fail\`.
 
 Production check:
 
@@ -364,6 +375,7 @@ $env:CLIENT_DIST = "client-angular/dist"; bun run start
 - Default port: 3000. Override with \`PORT\`.
 - Default database: \`server/data/app.db\`. Override with \`DATABASE_PATH\`.`,
     },
+    { heading: "Schema variants", body: null },
     {
       heading: "Removing or renaming the Notes example",
       body: `## Removing or renaming the Notes example
@@ -416,7 +428,7 @@ bun install --frozen-lockfile
 bun run verify
 \`\`\`
 
-Expected: \`bun run check\` (format, lint, typecheck, angular-eslint) and \`bun run build\` (Angular) exit 0; the integration tests report \`17 pass\`, \`0 fail\`.
+Expected: \`bun run check\` (format, lint, typecheck, angular-eslint) and \`bun run build\` (Angular) exit 0; the integration tests report \`24 pass\`, \`0 fail\`.
 
 Production check:
 
@@ -518,8 +530,28 @@ const VITE_REMOVE_ALL: Record<Flavor, Array<{ find: string; count: number }>> = 
 };
 
 const VITE_CLI_EDITS: Array<[find: string, replacement: string]> = [
-  ['      "cli/dist/**",\n      "cli/templates/**",\n', ""],
+  ['      "cli/dist/**",\n      "cli/templates/**",\n      "cli/overlays/**",\n', ""],
   ['      "cli/dist/**",\n', ""],
+];
+
+const REACT_TEST_REWRITES: Array<{
+  path: string;
+  find: string;
+  replacement: string;
+  count: number;
+}> = [
+  {
+    path: "server/test/client-dist.test.ts",
+    find: '"client-angular/dist"',
+    replacement: '"custom/dist"',
+    count: 2,
+  },
+  {
+    path: "server/test/env.cases.ts",
+    find: '"client-angular/dist"',
+    replacement: '"custom/dist"',
+    count: 2,
+  },
 ];
 
 function stripCliGitignore(text: string): string {
@@ -684,7 +716,24 @@ async function editReadme(flavor: Flavor, root: string): Promise<void> {
   await writeFile(file, text);
 }
 
+async function trimTemplateSharedPackage(flavor: Flavor, root: string): Promise<void> {
+  const file = join(root, "shared", "package.json");
+  const where = `shared/package.json (${flavor})`;
+  const pkg = await readJson<PackageJson>(file);
+  const dependencies = pkg.dependencies;
+  if (!dependencies) throw new SyncError(`${where}: dependencies is missing`);
+  if (typeof dependencies["zod"] !== "string") {
+    throw new SyncError(`${where}: expected a zod dependency`);
+  }
+  if (typeof dependencies["effect"] !== "string") {
+    throw new SyncError(`${where}: expected an effect dependency to trim`);
+  }
+  delete dependencies["effect"];
+  await writeJson(file, pkg);
+}
+
 async function transform(flavor: Flavor, root: string): Promise<void> {
+  await trimTemplateSharedPackage(flavor, root);
   await editPackageJson(flavor, root);
   await editFile(root, "vite.config.ts", [...VITE_CLI_EDITS, ...VITE_LINE_EDITS[flavor]]);
   for (const removal of VITE_REMOVE_ALL[flavor]) {
@@ -703,19 +752,112 @@ async function transform(flavor: Flavor, root: string): Promise<void> {
   await writeFile(gitignorePath, gitignore);
   await editReadme(flavor, root);
   if (flavor === "react") {
-    const file = join(root, "server", "test", "client-dist.test.ts");
-    const text = await readFile(file, "utf8");
-    await writeFile(
-      file,
-      replaceAllCount(
-        text,
-        '"client-angular/dist"',
-        '"custom/dist"',
-        2,
-        "server/test/client-dist.test.ts",
-      ),
-    );
+    for (const rewrite of REACT_TEST_REWRITES) {
+      const file = join(root, rewrite.path);
+      const text = await readFile(file, "utf8");
+      await writeFile(
+        file,
+        replaceAllCount(text, rewrite.find, rewrite.replacement, rewrite.count, rewrite.path),
+      );
+    }
   }
+}
+
+async function writeOverlayFile(
+  outRoot: string,
+  destination: string,
+  source: string,
+  edits: Array<[string, string]> = [],
+): Promise<void> {
+  let text = (await readFile(join(REPO_ROOT, source), "utf8")).replace(/\r\n/g, "\n");
+  for (const [find, replacement] of edits) {
+    text = replaceOnce(text, find, replacement, `${source} -> ${destination}`);
+  }
+  const file = join(outRoot, destination);
+  await mkdir(dirname(file), { recursive: true });
+  await writeFile(file, text);
+}
+
+async function editOverlayPackageJson(
+  outRoot: string,
+  destination: string,
+  source: string,
+  edit: (dependencies: Record<string, string>) => void,
+): Promise<void> {
+  const pkg = await readJson<PackageJson>(join(REPO_ROOT, source));
+  const dependencies = pkg.dependencies;
+  if (!dependencies) throw new SyncError(`${source}: dependencies is missing`);
+  edit(dependencies);
+  const file = join(outRoot, destination);
+  await mkdir(dirname(file), { recursive: true });
+  await writeJson(file, pkg);
+}
+
+const EFFECT_README_EDITS: Array<[string, string]> = [
+  ["Zod validates request bodies;", "Effect Schema validates request bodies;"],
+  [
+    "- `server/` — NestJS/Fastify on Bun, oRPC v1, Effect, Zod, Drizzle, SQLite",
+    "- `server/` — NestJS/Fastify on Bun, oRPC v1, Effect, Drizzle, SQLite",
+  ],
+];
+
+async function writeOverlayReadme(flavor: Flavor, outRoot: string): Promise<void> {
+  let text = await readFile(join(TEMPLATES_ROOT, flavor, "README.md"), "utf8");
+  for (const [find, replacement] of EFFECT_README_EDITS) {
+    text = replaceOnce(text, find, replacement, `README.md overlay (${flavor})`);
+  }
+  const file = join(outRoot, "README.md");
+  await mkdir(dirname(file), { recursive: true });
+  await writeFile(file, text);
+}
+
+async function writeOverlay(flavor: Flavor, outRoot: string): Promise<void> {
+  await writeOverlayFile(
+    outRoot,
+    "shared/notes.contract.ts",
+    "shared/variants/effect/notes.contract.ts",
+  );
+  await writeOverlayFile(outRoot, "server/src/env.ts", "server/src/variants/effect/env.ts", [
+    ['resolve(import.meta.dir, "../../../..")', 'resolve(import.meta.dir, "../..")'],
+  ]);
+  await writeOverlayFile(outRoot, "server/test/env.test.ts", "server/test/env-effect.test.ts", [
+    ['"@server/variants/effect/env"', '"@server/env"'],
+  ]);
+  await writeOverlayFile(
+    outRoot,
+    "server/test/contract.test.ts",
+    "server/test/contract-effect.test.ts",
+    [['"@shared/variants/effect/notes.contract"', '"@shared/notes.contract"']],
+  );
+  await editOverlayPackageJson(
+    outRoot,
+    "shared/package.json",
+    "shared/package.json",
+    (dependencies) => {
+      if (typeof dependencies["zod"] !== "string") {
+        throw new SyncError("shared/package.json: expected a zod dependency to drop");
+      }
+      if (typeof dependencies["effect"] !== "string") {
+        throw new SyncError("shared/package.json: expected an effect dependency");
+      }
+      delete dependencies["zod"];
+    },
+  );
+  await editOverlayPackageJson(
+    outRoot,
+    "server/package.json",
+    "server/package.json",
+    (dependencies) => {
+      if (typeof dependencies["zod"] !== "string") {
+        throw new SyncError("server/package.json: expected a zod dependency to drop");
+      }
+      if (typeof dependencies["effect"] !== "string") {
+        throw new SyncError("server/package.json: expected an effect dependency");
+      }
+      delete dependencies["zod"];
+    },
+  );
+  await writeOverlayReadme(flavor, outRoot);
 }
 
 async function copyTrackedFile(file: string, outRoot: string): Promise<void> {
@@ -751,7 +893,10 @@ async function formatTemplates(): Promise<void> {
   // Explicit file paths bypass Oxfmt's directory walk, which honors the root
   // .gitignore entry for cli/templates/. Run from cli/, which has the
   // package.json Vite+ requires. Unsupported extensions are skipped.
-  const files = await listFiles(TEMPLATES_ROOT, "templates");
+  const files = [
+    ...(await listFiles(TEMPLATES_ROOT, "templates")),
+    ...(await listFiles(OVERLAYS_ROOT, "overlays")),
+  ];
   const result = spawnSync(process.execPath, [VP_BIN, "fmt", ...files], {
     cwd: CLI_ROOT,
     stdio: "inherit",
@@ -761,6 +906,7 @@ async function formatTemplates(): Promise<void> {
 
 async function main(): Promise<void> {
   await rm(TEMPLATES_ROOT, { recursive: true, force: true });
+  await rm(OVERLAYS_ROOT, { recursive: true, force: true });
   for (const flavor of FLAVORS) {
     const outRoot = join(TEMPLATES_ROOT, flavor);
     for (const file of await sourceFiles(flavor)) {
@@ -769,6 +915,11 @@ async function main(): Promise<void> {
     await transform(flavor, outRoot);
     console.log(
       `synced ${flavor}: ${await countFiles(outRoot)} files -> ${relative(REPO_ROOT, outRoot)}`,
+    );
+    const overlayRoot = join(OVERLAYS_ROOT, flavor);
+    await writeOverlay(flavor, overlayRoot);
+    console.log(
+      `synced ${flavor} overlay: ${await countFiles(overlayRoot)} files -> ${relative(REPO_ROOT, overlayRoot)}`,
     );
   }
   await formatTemplates();

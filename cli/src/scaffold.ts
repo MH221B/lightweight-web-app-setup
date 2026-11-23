@@ -17,11 +17,14 @@ const DOTFILES: Record<string, string> = {
   _npmrc: ".npmrc",
 };
 
+export type SchemaLib = "zod" | "effect";
+
 export interface ScaffoldOptions {
   flavor: Flavor;
   projectName: string;
   targetDir: string;
   templatesDir?: string;
+  schema: SchemaLib;
 }
 
 export interface ScaffoldResult {
@@ -29,6 +32,7 @@ export interface ScaffoldResult {
   projectName: string;
   displayName: string;
   flavor: Flavor;
+  schema: SchemaLib;
   skipped: string[];
 }
 
@@ -69,6 +73,42 @@ async function copyTree(
   }
 }
 
+async function copyOverlayTree(
+  source: string,
+  destination: string,
+  written: string[],
+  skipped: string[],
+  base = "",
+): Promise<void> {
+  await mkdir(destination, { recursive: true });
+  for (const entry of await readdir(source, { withFileTypes: true })) {
+    const from = join(source, entry.name);
+    const name = mappedName(entry.name);
+    const to = join(destination, name);
+    const path = base === "" ? name : `${base}/${name}`;
+    if (entry.isDirectory()) {
+      await copyOverlayTree(from, to, written, skipped, path);
+    } else if (entry.isFile()) {
+      await mkdir(dirname(to), { recursive: true });
+      const data = await readFile(from);
+      if (written.includes(path)) {
+        // The base tree wrote this path, so the overlay replaces it.
+        await writeFile(to, data);
+        continue;
+      }
+      // The tree never wrote it (the user owned it, or the merge skipped it):
+      // create exclusively so a user file is never destroyed.
+      try {
+        await writeFile(to, data, { flag: "wx" });
+        written.push(path);
+      } catch (error) {
+        if ((error as { code?: string }).code !== "EEXIST") throw error;
+        if (!skipped.includes(path)) skipped.push(path);
+      }
+    }
+  }
+}
+
 export async function scaffold(options: ScaffoldOptions): Promise<ScaffoldResult> {
   const invalid = validateProjectName(options.projectName);
   if (invalid) throw new Error(invalid);
@@ -87,6 +127,18 @@ export async function scaffold(options: ScaffoldOptions): Promise<ScaffoldResult
   const written: string[] = [];
   const skipped: string[] = [];
   await copyTree(templateDir, targetDir, written, skipped);
+
+  if (options.schema === "effect") {
+    const overlayDir = join(dirname(templatesDir), "overlays", options.flavor);
+    const overlayInfo = await stat(overlayDir).catch(() => null);
+    if (!overlayInfo?.isDirectory()) {
+      throw new Error(
+        `Missing effect overlay for "${options.flavor}" at ${overlayDir}. Run "bun run templates:sync".`,
+      );
+    }
+    await copyOverlayTree(overlayDir, targetDir, written, skipped);
+  }
+
   for (const path of skipped) {
     console.log(`${styleText("yellow", "!")} skipped existing file: ${path}`);
   }
@@ -118,6 +170,7 @@ export async function scaffold(options: ScaffoldOptions): Promise<ScaffoldResult
     projectName: options.projectName,
     displayName,
     flavor: options.flavor,
+    schema: options.schema,
     skipped: skipped,
   };
 }

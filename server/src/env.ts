@@ -1,28 +1,24 @@
 import { resolve } from "node:path";
-import { Effect, Schema } from "effect";
+import { z } from "zod";
 
 const repoRoot = resolve(import.meta.dir, "../..");
 const defaultClientDist = resolve(repoRoot, "client/dist");
 
-const EnvSchema = Schema.Struct({
-  NODE_ENV: Schema.Literals(["development", "test", "production"]).pipe(
-    Schema.withDecodingDefault(Effect.succeed("development" as const)),
-  ),
-  PORT: Schema.FiniteFromString.check(
-    Schema.isInt(),
-    Schema.isBetween({ minimum: 1, maximum: 65535 }),
-  ).pipe(Schema.withDecodingDefault(Effect.succeed("3000"))),
-  DATABASE_PATH: Schema.optional(Schema.String.check(Schema.isMinLength(1))),
-  CLIENT_DIST: Schema.String.check(Schema.isMinLength(1)).pipe(
-    Schema.withDecodingDefault(Effect.succeed(defaultClientDist)),
-  ),
+const EnvSchema = z.object({
+  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  PORT: z.coerce.number().int().min(1).max(65535).default(3000),
+  DATABASE_PATH: z.string().min(1).optional(),
+  CLIENT_DIST: z
+    .string()
+    .min(1)
+    .default(defaultClientDist)
+    .transform((dir) => resolve(repoRoot, dir)),
 });
 
-export type Env = typeof EnvSchema.Type;
+export type Env = z.infer<typeof EnvSchema>;
 
 export function parseEnv(source: Record<string, string | undefined> = process.env): Env {
-  const raw = Schema.decodeUnknownSync(EnvSchema)(source);
-  return { ...raw, CLIENT_DIST: resolve(repoRoot, raw.CLIENT_DIST) };
+  return EnvSchema.parse(source);
 }
 
 export const env = parseEnv();

@@ -16,4 +16,5 @@ client-angular/.angular/
 # Generated CLI artifacts
 cli/dist/
 cli/templates/
+cli/overlays/
 cli/*.tgz
