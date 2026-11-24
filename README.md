@@ -31,8 +31,6 @@ bun run dev
 ```
 
 - Client: <http://localhost:5173>
-- API: <http://localhost:3000>
-- Vite proxies `/api` to the Bun server on `PORT`, defaulting to 3000. Set `PORT` for both processes when changing the API port.
 
 Angular flavor:
 
@@ -41,11 +39,11 @@ bun run dev:angular
 ```
 
 - Client: <http://localhost:5173> (Angular dev server)
-- API: <http://localhost:3000>
-- `client-angular/proxy.conf.mjs` proxies `/api` to the API on `PORT`, defaulting to 3000.
-- If the React dev server is already on 5173, Angular prints the next free port (5174) and serves there.
+- If React already uses 5173, Angular prints and uses the next free port (5174).
 
-Both commands start their two processes with `bun run --parallel`, so no second terminal or extra tooling is needed. The two-terminal path still works if you prefer it: `bun run dev:server` plus `bun run dev:client`, or `bun run dev:server` plus `bun run --filter client-angular start`.
+Both commands use `bun run --parallel` to start the client and API. The API defaults to <http://localhost:3000>. Vite and `client-angular/proxy.conf.mjs` proxy `/api` to `PORT` (default 3000). Set `PORT` for both processes when changing it.
+
+For separate terminals, run `bun run dev:server` with `bun run dev:client` or `bun run --filter client-angular start`.
 
 ## Build and static checks
 
@@ -55,11 +53,11 @@ bun run check
 
 `bun run check` runs three steps:
 
-1. `bun run routes` — `tsr generate` regenerates `client/src/routeTree.gen.ts` (ignored by git) without a full build, so a fresh clone type checks immediately.
-2. `vp check` — Vite+ formatting (Oxfmt) across `client/`, `client-angular/`, `server/`, and `shared/`, plus linting (Oxlint) and full TypeScript checks (type-aware Oxlint with `typescript-go`/tsgolint) across everything except `client-angular/`. Run it from the repository root so the root `vite.config.ts` applies.
-3. `bun run --filter client-angular lint` — angular-eslint 22.8.0 over `client-angular/` TypeScript and templates (inline and external), running on Bun with the workspace's TypeScript 6.0.3.
+1. `bun run routes` — `tsr generate` regenerates the git-ignored `client/src/routeTree.gen.ts` without a full build.
+2. `vp check` — Oxfmt formats `client/`, `client-angular/`, `server/`, and `shared/`. Oxlint and type-aware Oxlint with `typescript-go`/tsgolint lint and type-check everything except `client-angular/`. Run from the repository root to use `vite.config.ts`.
+3. `bun run --filter client-angular lint` — angular-eslint 22.8.0 checks Angular TypeScript and inline and external templates on Bun with TypeScript 6.0.3.
 
-`client-angular` is formatted by `vp check` but stays out of its lint and type-check legs: tsrs runs TypeScript 7 and Angular 22 rejects that version, and oxlint has no Angular template rules. Its real type gate is `ng build`.
+`client-angular/` is outside the `vp check` lint and type checks: tsrs uses TypeScript 7, which Angular 22 rejects, and Oxlint lacks Angular template rules. `ng build` type-checks Angular.
 
 `bun run typecheck` is the same type check without formatting, linting, or Angular: `bun run routes && vp check --no-fmt --no-lint`.
 
@@ -67,28 +65,15 @@ bun run check
 
 ## Vite+ tooling
 
-This baseline uses the project-local Vite+ CLI (`vite-plus@1.7.0`); no global install is needed.
+The project-local `vite-plus@1.7.0` needs no global install. `vp dev` runs the React dev server (`bun run dev:client`) with the React Compiler and router plugin. `vp build` builds React; `bun run build` also builds Angular. `vp check` uses the root `vite.config.ts` and ignores generated and build paths.
 
-| Tool                       | Status                | Notes                                                                                                                                                                           |
-| -------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `vp dev`                   | Active                | React client dev server (`bun run dev:client`) with the React Compiler, router plugin, and `/api` proxy.                                                                        |
-| `vp build`                 | Active                | React client production build; `bun run build` runs it and then the Angular build.                                                                                              |
-| `vp check`                 | Active                | Oxfmt over `client/`, `client-angular/`, `server/`, `shared/`; Oxlint and full type checks over everything except `client-angular/`; the normal static check (`bun run check`). |
-| `vp fmt`, `vp lint`        | Active via `vp check` | Root config lives in `vite.config.ts`; `client-angular/**` is formatted but outside the lint/type-check scope; generated and build paths are ignored.                           |
-| `vp test` / Vitest         | Not used              | Server and CLI tests use `bun:test`; see below.                                                                                                                                 |
-| `vp run`                   | Not used              | Root scripts already delegate through Bun workspace filters; Vite Task would duplicate that plumbing.                                                                           |
-| `vp create` / `vp migrate` | Not used              | The project is hand-authored; generators and codemods are out of scope.                                                                                                         |
-| `vp pack` / tsdown         | Not applicable        | No library package is published from this app.                                                                                                                                  |
-
-Server tests use `bun:test` on purpose: they exercise the NestJS/Fastify app against an in-memory `bun:sqlite` database through the checked-in Drizzle migration. `bun run test` runs the server and CLI suites.
+`bun run test` runs the server and CLI suites with `bun:test`. Server tests exercise the NestJS/Fastify app against in-memory `bun:sqlite` using the checked-in Drizzle migration.
 
 ## Angular flavor
 
-`client-angular/` is a standard Angular CLI 22 application: standalone components, zoneless change detection, OnPush by default, one hand-written route in `src/app/app.routes.ts`, Signal Forms for the note input, and TanStack Angular Query for server state. It builds with `ng build` and serves with `ng serve`, because the Angular CLI is Angular's supported build path; there is no supported way to hand a Vite config to `ng`.
+`client-angular/` is an Angular CLI 22 application with standalone components, zoneless change detection, OnPush by default, one hand-written route in `src/app/app.routes.ts`, Signal Forms for note input, and TanStack Angular Query for server state. It uses `ng build` and `ng serve`; `ng` does not support a Vite config.
 
-- `bun run dev:angular` — Angular dev server on 5173 plus the API on 3000.
 - `bun run --filter client-angular build` — production build to `client-angular/dist`, with `index.html` at that root.
-- `bun run --filter client-angular lint` — angular-eslint over TypeScript and templates.
 - TypeScript is pinned to 6.0.3 inside `client-angular/` because Angular 22 accepts `>=6.0 <6.1`; the root and the React client stay on TypeScript 7.
 - No client tests, matching the React flavor. The server suite covers the shared data layer for both.
 
@@ -111,8 +96,7 @@ The server validates its environment at boot in `server/src/env.ts` and fails fa
 
 ## Database
 
-- Default path: `server/data/app.db` (ignored by git)
-- Override: set `DATABASE_PATH` to an absolute path or a path relative to the process cwd
+- Set `DATABASE_PATH` to override the default path in the environment table.
 - WAL is enabled for file databases
 - Startup applies pending migrations automatically
 
@@ -128,7 +112,7 @@ Apply migrations explicitly:
 bun run db:migrate
 ```
 
-Expected output: `Migrated <repo>/server/data/app.db`. The database file and its `-wal`/`-shm` companions are ignored by git. The generated `server/drizzle/` directory is checked in. `server/data/` and `*.db*` files are not.
+Expected output: `Migrated <repo>/server/data/app.db`. Git ignores `server/data/`, `*.db*`, and the database's `-wal`/`-shm` companions. The generated `server/drizzle/` is checked in.
 
 ## Production
 
@@ -169,7 +153,7 @@ Generate PostgreSQL migrations with `bun run db:generate:pg`.
 DATABASE_URL=postgres://user:pass@localhost:5432/notes bun run --filter server test
 ```
 
-The databases you keep are never migrated or mutated: the suites connect to the database named by `DATABASE_URL` only to administer their temporary one. Integration tests create and drop their own temporary database (`mh_test_<random>`) there; this needs `CREATEDB`. Abrupt termination can leave a temporary database behind (cleanup is best-effort). Without `DATABASE_URL` they skip. CI sets `DATABASE_URL` together with `MH_REQUIRE_POSTGRES=1` so the PostgreSQL suite runs for real. A storage change updates both databases and their shared case tables in the same change.
+Integration tests create and drop a temporary database (`mh_test_<random>`) on the server named by `DATABASE_URL`; this needs `CREATEDB`. They connect to the named database only to administer the temporary one and never migrate or mutate databases you keep. Cleanup is best-effort; abrupt termination can leave the temporary database behind. Tests skip without `DATABASE_URL`. CI sets it with `MH_REQUIRE_POSTGRES=1` to run the PostgreSQL suite. Update both databases and their shared case tables together for storage changes.
 
 ## Schema variants
 
@@ -178,7 +162,7 @@ The live application validates with Zod. Effect Schema implementations ship as t
 - `shared/notes.contract.ts` (Zod) and `shared/variants/effect/notes.contract.ts` (Effect Schema)
 - `server/src/env.ts` (Zod) and `server/src/variants/effect/env.ts` (Effect Schema)
 
-`server/test/env.cases.ts` and `server/test/contract.cases.ts` hold the behavioral cases. `env.test.ts` and `contract.test.ts` run them against the live implementation; `env-effect.test.ts` and `contract-effect.test.ts` run the same cases against the twins. Effect still handles storage errors in both variants. A schema-behavior change updates both variants and the shared cases in the same change.
+`server/test/env.cases.ts` and `server/test/contract.cases.ts` hold shared behavioral cases. `env.test.ts` and `contract.test.ts` test the live implementation; `env-effect.test.ts` and `contract-effect.test.ts` test the twins. Effect handles storage errors in both. Update both variants and shared cases together for schema-behavior changes.
 
 ## Removing or renaming the Notes example
 
@@ -258,7 +242,7 @@ curl.exe -s -i http://localhost:3000/api/unknown
 
 Expected: `200`, `200`, and JSON `404` responses for both `/api` and `/api/unknown`.
 
-Manual browser checks (when a browser is available): open <http://localhost:5173> with `bun run dev`, add a note, refresh, and confirm the note remains; repeat with `bun run dev:angular`. The API process must be running on port 3000. Run one dev server at a time so Angular keeps 5173; if both run, it prints the port it picked.
+When a browser is available, open <http://localhost:5173> with `bun run dev`, add a note, refresh, and confirm it remains. Repeat with `bun run dev:angular`. The API must run on port 3000. Run one dev server at a time to keep Angular on 5173; otherwise it prints its chosen port.
 
 ## Copying this baseline
 

@@ -2,6 +2,7 @@
   "name": "mh-stack",
   "version": "0.1.0",
   "description": "Scaffold a React or Angular Bun monorepo from the lightweight web app starter.",
+  "license": "MIT",
   "bin": {
     "mh-stack": "dist/index.js"
   },
