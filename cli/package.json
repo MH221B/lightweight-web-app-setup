@@ -3,6 +3,11 @@
   "version": "0.1.0",
   "description": "Scaffold a React or Angular Bun monorepo from the lightweight web app starter.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MH221B/lightweight-web-app-setup.git",
+    "directory": "cli"
+  },
   "bin": {
     "mh-stack": "dist/index.js"
   },
