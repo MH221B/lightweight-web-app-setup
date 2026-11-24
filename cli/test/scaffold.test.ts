@@ -1,5 +1,5 @@
 import { afterAll, expect, spyOn, test } from "bun:test";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { link, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -34,7 +34,10 @@ interface AngularProject {
   schematics?: Record<string, { style?: string }>;
   architect?: {
     build?: { options?: { styles?: string[]; inlineStyleLanguage?: string } };
-    serve?: { configurations?: Record<string, { buildTarget?: string }> };
+    serve?: {
+      options?: { prebundle?: boolean };
+      configurations?: Record<string, { buildTarget?: string }>;
+    };
   };
 }
 
@@ -295,6 +298,7 @@ async function assertScaffold(
     const angularJsonText = await readFile(join(dir, "client-angular", "angular.json"), "utf8");
     const project = angularJson.projects?.[CLIENT_PACKAGE];
     const buildOptions = project?.architect?.build?.options;
+    expect(project?.architect?.serve?.options?.prebundle).toBe(false);
     const componentStyle = project?.schematics?.["@schematics/angular:component"]?.style;
     const app = await readFile(join(dir, "client-angular", "src", "app", "app.ts"), "utf8");
     const notesPageFile = await readFile(
@@ -502,6 +506,50 @@ for (const combo of COMBOS) {
     await assertScaffold(combo.flavor, dir, combo.schema, combo.db, combo.style);
   });
 }
+
+test("Angular dev server serves its main module", async () => {
+  const child = spawn(
+    "node",
+    ["node_modules/@angular/cli/bin/ng.js", "serve", "--host", "127.0.0.1", "--port", "0"],
+    {
+      cwd: join(REPO_ROOT, "client-angular"),
+      env: { ...process.env, PORT: "0", NO_COLOR: "1" },
+    },
+  );
+  let output = "";
+  try {
+    const url = await new Promise<string>((resolve, reject) => {
+      const timeout = setTimeout(
+        () => reject(new Error(`Dev server timed out:\n${output}`)),
+        20_000,
+      );
+      const onData = (chunk: Buffer) => {
+        output += chunk.toString();
+        const match = output.match(/http:\/\/127\.0\.0\.1:(\d+)\//);
+        if (match) {
+          clearTimeout(timeout);
+          resolve(match[0]);
+        }
+      };
+      child.stdout.on("data", onData);
+      child.stderr.on("data", onData);
+      child.once("error", (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      });
+      child.once("exit", (code) => {
+        clearTimeout(timeout);
+        reject(new Error(`Dev server exited with ${code}:\n${output}`));
+      });
+    });
+    const response = await fetch(new URL("main.js", url));
+    expect(response.status).toBe(200);
+    expect(await response.text()).not.toContain("Failed to resolve import");
+    expect(output).not.toContain("Failed to resolve dependency");
+  } finally {
+    child.kill();
+  }
+}, 30_000);
 
 test("keeps existing files and reports the skip", async () => {
   const dir = await makeTarget("react");

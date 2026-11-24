@@ -27,6 +27,8 @@ bun run dev:angular
 - Client: <http://localhost:5173> (Angular dev server)
 - If React already uses 5173, Angular prints and uses the next free port (5174).
 
+Angular dependency prebundling is disabled because Bun's isolated install places shared dependencies outside the Angular client's resolution path.
+
 Both commands use `bun run --parallel` to start the client and API. The API defaults to <http://localhost:3000>. Vite and `client-angular/proxy.conf.mjs` proxy `/api` to `PORT` (default 3000). Set `PORT` for both processes when changing it.
 
 For separate terminals, run `bun run dev:server` with `bun run dev:client` or `bun run --filter client-angular start`.

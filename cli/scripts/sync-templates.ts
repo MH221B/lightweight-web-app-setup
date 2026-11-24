@@ -349,6 +349,8 @@ bun run dev:angular
 - API: <http://localhost:3000>
 - \`client-angular/proxy.conf.mjs\` proxies \`/api\` to the API on \`PORT\`, defaulting to 3000.
 
+Angular dependency prebundling is disabled because Bun's isolated install places shared dependencies outside the Angular client's resolution path.
+
 \`bun run dev:angular\` starts both processes with \`bun run --parallel\`, so no second terminal or extra tooling is needed. The two-terminal path also works: \`bun run dev:server\` plus \`bun run --filter client-angular start\`.`,
     },
     {
