@@ -1,3 +1,3 @@
-import { COMBOS } from "../src/scaffold.ts";
+import { CI_COMBOS } from "../src/scaffold.ts";
 
-console.log(JSON.stringify({ include: COMBOS }));
+console.log(JSON.stringify({ include: CI_COMBOS }));

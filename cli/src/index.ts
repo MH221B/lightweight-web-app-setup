@@ -11,15 +11,18 @@ import {
   askFlavor,
   askProjectName,
   askSchemaLibrary,
+  askStyling,
   confirmNonEmpty,
 } from "./prompts.ts";
 import { validateProjectName, type Flavor } from "./rename.ts";
 import { scaffold, type DbEngine, type SchemaLib } from "./scaffold.ts";
+import type { StyleChoice } from "./template-config.ts";
 
 interface ParsedArgs {
   flavor?: Flavor;
   schema?: SchemaLib;
   db?: DbEngine;
+  style?: StyleChoice;
   name?: string;
   target?: string;
   install: boolean;
@@ -48,6 +51,13 @@ function parseArgs(argv: string[]): ParsedArgs {
       const db: DbEngine = arg === "--sqlite" ? "sqlite" : "postgres";
       if (parsed.db && parsed.db !== db) fail("Choose one of --sqlite or --postgres.");
       parsed.db = db;
+    } else if (arg === "--scss" || arg === "--tailwind" || arg === "--both") {
+      const style: StyleChoice =
+        arg === "--scss" ? "scss" : arg === "--tailwind" ? "tailwind" : "both";
+      if (parsed.style && parsed.style !== style) {
+        fail("Choose one of --scss, --tailwind, or --both.");
+      }
+      parsed.style = style;
     } else if (arg === "--name") {
       const value = argv[index + 1];
       if (!value) fail("--name needs a value.");
@@ -89,7 +99,7 @@ async function main(): Promise<void> {
   if (parsed.version) return;
 
   const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY);
-  let { flavor, name, target, schema, db } = parsed;
+  let { flavor, name, target, schema, db, style } = parsed;
   if (!interactive) {
     if (!flavor || !target) fail(RECIPE);
     if (name === undefined) {
@@ -107,6 +117,7 @@ async function main(): Promise<void> {
   flavor ??= await askFlavor();
   schema ??= interactive ? await askSchemaLibrary() : "zod";
   db ??= interactive ? await askDatabase() : "sqlite";
+  style ??= interactive ? await askStyling() : "scss";
   target ??= await askDirectory(name);
 
   const targetDir = resolve(target);
@@ -117,7 +128,7 @@ async function main(): Promise<void> {
     if (!(await confirmNonEmpty(targetDir))) fail("Aborted.");
   }
 
-  const result = await scaffold({ flavor, projectName: name, targetDir, schema, db });
+  const result = await scaffold({ flavor, projectName: name, targetDir, schema, db, style });
   for (const path of result.skipped) {
     console.log(`${styleText("yellow", "!")} skipped existing file: ${path}`);
   }

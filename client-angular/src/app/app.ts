@@ -5,10 +5,11 @@ import { RouterOutlet } from "@angular/router";
   selector: "app-root",
   imports: [RouterOutlet],
   template: `
-    <main>
+    <main class="page">
       <h1>Lightweight web app</h1>
       <router-outlet />
     </main>
   `,
+  styleUrl: "./app.scss",
 })
 export class App {}

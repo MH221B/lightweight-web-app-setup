@@ -38,10 +38,10 @@ function NotesPage() {
   }
 
   return (
-    <section>
+    <section className="panel">
       <h2>Notes</h2>
 
-      <form onSubmit={submit}>
+      <form className="note-form" onSubmit={submit}>
         <label htmlFor="note">New note</label>
         <input
           id="note"
@@ -57,15 +57,25 @@ function NotesPage() {
         </button>
       </form>
 
-      {create.isError ? <p role="alert">{create.error.message}</p> : null}
+      {create.isError ? (
+        <p className="status status--error" role="alert">
+          {create.error.message}
+        </p>
+      ) : null}
 
-      {notes.isPending ? <p>Loading notes...</p> : null}
-      {notes.isError ? <p role="alert">{notes.error.message}</p> : null}
-      {notes.data?.length === 0 ? <p>No notes yet.</p> : null}
+      {notes.isPending ? <p className="status">Loading notes...</p> : null}
+      {notes.isError ? (
+        <p className="status status--error" role="alert">
+          {notes.error.message}
+        </p>
+      ) : null}
+      {notes.data?.length === 0 ? <p className="status">No notes yet.</p> : null}
 
-      <ul>
+      <ul className="note-list">
         {notes.data?.map((note) => (
-          <li key={note.id}>{note.text}</li>
+          <li className="note" key={note.id}>
+            {note.text}
+          </li>
         ))}
       </ul>
     </section>

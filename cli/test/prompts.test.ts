@@ -1,25 +1,36 @@
 import { expect, mock, test } from "bun:test";
 
-test("database prompt offers SQLite by default and PostgreSQL", async () => {
-  let captured: Record<string, unknown> = {};
+test("prompts offer their documented defaults and choices", async () => {
+  const captured: Record<string, Record<string, unknown>> = {};
   await mock.module("@inquirer/prompts", () => ({
     select: async (config: Record<string, unknown>) => {
-      captured = config;
-      return "postgres";
+      captured[String(config["message"])] = config;
+      const choices = config["choices"] as Array<{ value: string }> | undefined;
+      return choices?.[0]?.value ?? "";
     },
     input: async () => "",
     confirm: async () => false,
   }));
 
-  const { askDatabase } = await import("../src/prompts.ts");
+  const { askDatabase, askStyling } = await import("../src/prompts.ts");
   await askDatabase();
+  await askStyling();
 
-  expect(captured["message"]).toBe("Database:");
-  expect(captured["default"]).toBe("sqlite");
-  const choices = captured["choices"] as Array<{ name: string; value: string }>;
-  expect(choices.map((choice) => choice.value)).toEqual(["sqlite", "postgres"]);
-  expect(choices[0]?.name).toContain("SQLite");
-  expect(choices[0]?.name).toContain("default");
-  expect(choices[1]?.name).toContain("PostgreSQL");
+  const database = captured["Database:"] ?? {};
+  expect(database["default"]).toBe("sqlite");
+  const databaseChoices = database["choices"] as Array<{ name: string; value: string }>;
+  expect(databaseChoices.map((choice) => choice.value)).toEqual(["sqlite", "postgres"]);
+  expect(databaseChoices[0]?.name).toContain("SQLite");
+  expect(databaseChoices[0]?.name).toContain("default");
+  expect(databaseChoices[1]?.name).toContain("PostgreSQL");
+
+  const styling = captured["Styling:"] ?? {};
+  expect(styling["default"]).toBe("scss");
+  const stylingChoices = styling["choices"] as Array<{ name: string; value: string }>;
+  expect(stylingChoices.map((choice) => choice.value)).toEqual(["scss", "tailwind", "both"]);
+  expect(stylingChoices[0]?.name).toContain("SCSS");
+  expect(stylingChoices[0]?.name).toContain("default");
+  expect(stylingChoices[1]?.name).toContain("Tailwind");
+  expect(stylingChoices[2]?.name).toContain("Tailwind");
   mock.restore();
 });

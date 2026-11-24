@@ -6,7 +6,7 @@ export const Route = createRootRoute({
 
 function RootLayout() {
   return (
-    <main>
+    <main className="page">
       <h1>Lightweight web app</h1>
       <Outlet />
     </main>

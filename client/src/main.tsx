@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createRouter } from "@tanstack/react-router";
 import { routeTree } from "@client/routeTree.gen";
+import "./styles.scss";
 
 const queryClient = new QueryClient({
   defaultOptions: {

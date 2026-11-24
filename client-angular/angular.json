@@ -12,6 +12,11 @@
       "root": "",
       "sourceRoot": "src",
       "prefix": "app",
+      "schematics": {
+        "@schematics/angular:component": {
+          "style": "scss"
+        }
+      },
       "architect": {
         "build": {
           "builder": "@angular/build:application",
@@ -23,7 +28,9 @@
             "outputPath": {
               "base": "dist",
               "browser": ""
-            }
+            },
+            "styles": ["src/styles.scss"],
+            "inlineStyleLanguage": "scss"
           },
           "configurations": {
             "production": {

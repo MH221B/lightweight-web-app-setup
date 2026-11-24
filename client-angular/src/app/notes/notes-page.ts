@@ -7,10 +7,10 @@ import { NotesService } from "./notes.service";
   selector: "app-notes-page",
   imports: [FormField],
   template: `
-    <section>
+    <section class="panel">
       <h2>Notes</h2>
 
-      <form (submit)="submit($event)">
+      <form class="note-form" (submit)="submit($event)">
         <label for="note">New note</label>
         <input id="note" [formField]="noteForm.text" />
         <button type="submit" [disabled]="createNote.isPending()">
@@ -19,26 +19,27 @@ import { NotesService } from "./notes.service";
       </form>
 
       @if (createNote.isError()) {
-        <p role="alert">{{ createNote.error()?.message }}</p>
+        <p class="status status--error" role="alert">{{ createNote.error()?.message }}</p>
       }
 
       @if (notes.isPending()) {
-        <p>Loading notes...</p>
+        <p class="status">Loading notes...</p>
       }
       @if (notes.isError()) {
-        <p role="alert">{{ notes.error()?.message }}</p>
+        <p class="status status--error" role="alert">{{ notes.error()?.message }}</p>
       }
       @if (notes.data()?.length === 0) {
-        <p>No notes yet.</p>
+        <p class="status">No notes yet.</p>
       }
 
-      <ul>
+      <ul class="note-list">
         @for (note of noteList(); track note.id) {
-          <li>{{ note.text }}</li>
+          <li class="note">{{ note.text }}</li>
         }
       </ul>
     </section>
   `,
+  styleUrl: "./notes-page.scss",
 })
 export class NotesPage {
   private readonly notesService = inject(NotesService);

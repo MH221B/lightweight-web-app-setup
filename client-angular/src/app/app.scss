@@ -1,0 +1,22 @@
+@use "../styles/tokens" as tokens;
+
+.page {
+  max-width: tokens.$width-page;
+  margin: 0 auto;
+  padding: tokens.$space-6 tokens.$space-4 tokens.$space-6 * 2;
+  display: flex;
+  flex-direction: column;
+  gap: tokens.$space-1;
+
+  h1 {
+    margin: 0;
+    font-size: tokens.$size-heading;
+    letter-spacing: -0.01em;
+  }
+}
+
+@media (max-width: #{tokens.$breakpoint-narrow}) {
+  .page {
+    padding: tokens.$space-4 tokens.$space-3;
+  }
+}

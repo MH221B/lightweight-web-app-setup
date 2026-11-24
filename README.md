@@ -10,12 +10,20 @@ npx lwapp my-app
 
 ## Stack
 
-- **Clients:** React 19 on Vite+ with TanStack Router and Query; Angular 22 on the Angular CLI (standalone, zoneless, Signal Forms) with TanStack Angular Query.
+- **Clients:** React 19 on Vite+ with TanStack Router and Query; Angular 22 on the Angular CLI (standalone, zoneless, Signal Forms) with TanStack Angular Query. Both ship with SCSS; `lwapp` can scaffold either with Tailwind CSS or with both pipelines instead.
 - **API:** NestJS controllers, modules, and services using Fastify on Bun.
 - **Shared data layer:** an oRPC v1 contract and framework-free oRPC fetch helpers in `shared/`. Zod validates request bodies; both clients and the server use the same route and response types.
 - **Data:** Effect handles storage errors; Drizzle accesses SQLite through `bun:sqlite`. A PostgreSQL twin (`postgres.js` + Drizzle's `postgres-js` adapter) lives under `server/src/variants/postgres/` and scaffolds with `--postgres`.
 
 ![Notes request flow: the React and Angular clients share an oRPC v1 contract with the NestJS controller, which calls a service backed by Drizzle and SQLite.](architecture.svg)
+
+## Styling
+
+The checked-in React and Angular clients use SCSS. `lwapp` defaults to SCSS and also offers `--tailwind` and `--both`.
+
+Client styling is configured in the client directory. See its package manifest and stylesheet entries for the selected setup.
+
+The `both` choice runs two pipelines: Tailwind in a plain `.css` entry and SCSS in its own entry. No Tailwind directive lives inside a `.scss` file, because the Tailwind Vite plugin ignores Sass files.
 
 ## Prerequisites
 

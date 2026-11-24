@@ -12,19 +12,6 @@ interface PackageJson {
   [key: string]: unknown;
 }
 
-interface AngularJson {
-  projects?: Record<string, AngularProject>;
-  [key: string]: unknown;
-}
-
-interface AngularProject {
-  prefix?: string;
-  architect?: {
-    serve?: { configurations?: Record<string, { buildTarget?: string }> };
-  };
-  [key: string]: unknown;
-}
-
 export function validateProjectName(name: string): string | null {
   if (name.length === 0) return "Project name is required.";
   if (name.length > 214) return "Project name must be 214 characters or fewer.";
@@ -97,18 +84,6 @@ function renameFilters(scripts: Record<string, string>, from: string, to: string
   for (const [key, value] of Object.entries(scripts)) {
     scripts[key] = value.replace(pattern, to);
   }
-}
-
-function rewriteProjectReferences(value: unknown, from: string, to: string): unknown {
-  if (typeof value === "string") return value.replaceAll(`${from}:`, `${to}:`);
-  if (Array.isArray(value)) return value.map((item) => rewriteProjectReferences(item, from, to));
-  if (value !== null && typeof value === "object") {
-    const record = value as Record<string, unknown>;
-    for (const key of Object.keys(record)) {
-      record[key] = rewriteProjectReferences(record[key], from, to);
-    }
-  }
-  return value;
 }
 
 function occurrences(text: string, token: string): Array<[number, number]> {
@@ -194,21 +169,14 @@ export async function renameProject(options: RenameOptions): Promise<WrittenSpan
   }
 
   if (flavor === "angular") {
-    if (!skipped.has(`${clientDir}/angular.json`)) {
-      const angularJsonPath = join(targetDir, clientDir, "angular.json");
-      const angularJson = await readJson<AngularJson>(angularJsonPath);
-      const projects = angularJson.projects;
-      const project = projects?.[clientDir];
-      if (!projects || !project) throw new Error("angular.json: missing projects.client-angular");
-      const renamed: Record<string, AngularProject> = {};
-      for (const [key, value] of Object.entries(projects)) {
-        renamed[key === clientDir ? clientPkg : key] =
-          key === clientDir ? { ...value, prefix } : value;
-      }
-      angularJson.projects = renamed;
-      const updated = rewriteProjectReferences(angularJson, clientDir, clientPkg) as AngularJson;
-      await writeJson(angularJsonPath, updated);
-    }
+    // Literal edits only: the shipped angular.json is already formatter-clean,
+    // and re-serializing it expands short arrays (`styles`) that Oxfmt keeps inline.
+    await edit(`${clientDir}/angular.json`, [
+      [`"${clientDir}": {`, `"${clientPkg}": {`],
+      ['"prefix": "app"', `"prefix": "${prefix}"`],
+      [`"${clientDir}:build:production"`, `"${clientPkg}:build:production"`],
+      [`"${clientDir}:build:development"`, `"${clientPkg}:build:development"`],
+    ]);
 
     await edit(`${clientDir}/eslint.config.mjs`, [
       ['prefix: "app", style: "kebab-case"', `prefix: "${prefix}", style: "kebab-case"`],
@@ -248,19 +216,13 @@ export async function renameProject(options: RenameOptions): Promise<WrittenSpan
     }
     spans.set("README.md", await editText(readmePath, edits));
   }
-  for (const path of [
-    "package.json",
-    `${clientDir}/package.json`,
-    ...(flavor === "angular" ? [`${clientDir}/angular.json`] : []),
-  ]) {
+  for (const path of ["package.json", `${clientDir}/package.json`]) {
     if (skipped.has(path)) continue;
     const text = await readFile(join(targetDir, path), "utf8");
     const values =
       path === "package.json"
         ? [`"name": ${JSON.stringify(projectName)}`, `--filter ${clientPkg}`]
-        : path.endsWith("/package.json")
-          ? [`"name": ${JSON.stringify(clientPkg)}`]
-          : [JSON.stringify(clientPkg), `${clientPkg}:`, `"prefix": ${JSON.stringify(prefix)}`];
+        : [`"name": ${JSON.stringify(clientPkg)}`];
     spans.set(
       path,
       values.flatMap((value) => occurrences(text, value)),

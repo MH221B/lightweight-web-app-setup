@@ -2,14 +2,21 @@ export const DOTFILES: Record<string, string> = {
   ".gitattributes": "_gitattributes",
   ".gitignore": "_gitignore",
   ".npmrc": "_npmrc",
+  ".postcssrc.json": "_postcssrc.json",
 };
 
 export type Flavor = "react" | "angular";
 export type SchemaLib = "zod" | "effect";
 export type DbEngine = "sqlite" | "postgres";
+export type StyleChoice = "scss" | "tailwind" | "both";
 export const CLIENT_DIR: Record<Flavor, string> = { react: "client", angular: "client-angular" };
 export const OVERLAY_SETS = ["effect-sqlite", "zod-postgres", "effect-postgres"] as const;
 export type OverlaySet = (typeof OVERLAY_SETS)[number];
+export const STYLE_OVERLAYS: Record<StyleChoice, string | null> = {
+  scss: null,
+  tailwind: "style-tailwind",
+  both: "style-both",
+};
 
 export function overlaySetFor(schema: SchemaLib, db: DbEngine): OverlaySet | null {
   if (db === "postgres") return schema === "effect" ? "effect-postgres" : "zod-postgres";

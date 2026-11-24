@@ -71,8 +71,10 @@ const EXCLUDED_PREFIXES = [
   "cli/",
   "client-angular/.angular/",
   "client-angular/dist/",
+  "client-angular/variants/",
   "client/.tanstack/",
   "client/dist/",
+  "client/variants/",
   "node_modules/",
   "server/data/",
   "server/drizzle-pg/",
@@ -509,6 +511,10 @@ const README_LINE_EDITS: Record<Flavor, Array<[find: string, replacement: string
       "Clients import the shared data layer, not the server application.",
       "The client imports the shared data layer, not the server application.",
     ],
+    [
+      "The checked-in React and Angular clients use SCSS. `lwapp` defaults to SCSS and also offers `--tailwind` and `--both`.\n\n",
+      "",
+    ],
   ],
   angular: [
     [
@@ -535,6 +541,10 @@ const README_LINE_EDITS: Record<Flavor, Array<[find: string, replacement: string
       "the root and the React client stay on TypeScript 7",
       "the root and the server stay on TypeScript 7",
     ],
+    [
+      "The checked-in React and Angular clients use SCSS. `lwapp` defaults to SCSS and also offers `--tailwind` and `--both`.\n\n",
+      "",
+    ],
   ],
 };
 
@@ -550,6 +560,7 @@ const VITE_LINE_EDITS: Record<Flavor, Array<[find: string, replacement: string]>
       "",
     ],
     ['      "client-angular/**",\n', ""],
+    ['      "client/variants/**",\n', ""],
     ['      "client-angular/dist/**",\n', ""],
     ['      "client-angular/.angular/**",\n', ""],
   ],
@@ -558,6 +569,7 @@ const VITE_LINE_EDITS: Record<Flavor, Array<[find: string, replacement: string]>
       "Its gates are `ng build` and angular-eslint (the third step of `check`).",
       "Its gates are `ng build` and angular-eslint (the second step of `check`).",
     ],
+    ['      "client/variants/**",\n', ""],
   ],
 };
 
@@ -1028,6 +1040,48 @@ async function writeRemovals(outRoot: string): Promise<void> {
   await writeFile(file, `${JSON.stringify(PG_REMOVALS, null, 2)}\n`);
 }
 
+// Removal entries are root-relative, the same shape `applyRemovals` compares
+// against `written`: the scaffold writes `client/...` and `client-angular/...`
+// paths, so a bare `src/styles.scss` would never match. Directory entries end
+// in `/` so `applyRemovals` prunes them.
+const STYLE_OVERLAY_REMOVALS: Record<Flavor, Record<"tailwind" | "both", string[]>> = {
+  react: {
+    tailwind: ["client/src/styles.scss", "client/src/styles/"],
+    both: [],
+  },
+  angular: {
+    tailwind: [
+      "client-angular/src/styles.scss",
+      "client-angular/src/styles/",
+      "client-angular/src/app/app.scss",
+      "client-angular/src/app/notes/notes-page.scss",
+    ],
+    both: [],
+  },
+};
+
+async function writeStyleOverlay(
+  flavor: Flavor,
+  style: "style-tailwind" | "style-both",
+  outRoot: string,
+): Promise<void> {
+  const variant = style === "style-tailwind" ? "tailwind" : "both";
+  const variantRoot = `${CLIENT_DIR[flavor]}/variants/${variant}`;
+  for (const file of await listFiles(join(REPO_ROOT, variantRoot))) {
+    await writeOverlayFile(
+      outRoot,
+      mappedName(`${CLIENT_DIR[flavor]}/${file}`),
+      `${variantRoot}/${file}`,
+    );
+  }
+  const removalsFile = join(outRoot, "removals.json");
+  await mkdir(dirname(removalsFile), { recursive: true });
+  await writeFile(
+    removalsFile,
+    `${JSON.stringify(STYLE_OVERLAY_REMOVALS[flavor][variant], null, 2)}\n`,
+  );
+}
+
 async function writeEffectContract(outRoot: string): Promise<void> {
   for (const file of await listFiles(join(REPO_ROOT, "shared/variants/effect"))) {
     if (file !== "notes.contract.ts") throw new SyncError(`Unhandled effect variant file: ${file}`);
@@ -1315,6 +1369,11 @@ async function main(): Promise<void> {
       const overlayRoot = join(overlaysRoot, flavor, set);
       await writeOverlaySet(flavor, set, overlayRoot, templatesRoot);
       console.log(`assembled ${flavor} overlay ${set}: ${countFiles(overlayRoot)} files`);
+    }
+    for (const style of ["style-tailwind", "style-both"] as const) {
+      const overlayRoot = join(overlaysRoot, flavor, style);
+      await writeStyleOverlay(flavor, style, overlayRoot);
+      console.log(`assembled ${flavor} overlay ${style}: ${countFiles(overlayRoot)} files`);
     }
   }
   await rm(TEMPLATES_ROOT, { recursive: true, force: true });

@@ -155,7 +155,7 @@ jobs:
         run: npm install --omit=dev --ignore-scripts
       - name: Scaffold
         working-directory: artifact/package
-        run: node dist/index.js --${{ matrix.flavor }} --${{ matrix.schema }} --${{ matrix.db }} --name ci-app --no-install "${{ runner.temp }}/ci-app-${{ matrix.flavor }}-${{ matrix.schema }}-${{ matrix.db }}"
+        run: node dist/index.js --${{ matrix.flavor }} --${{ matrix.schema }} --${{ matrix.db }} --${{ matrix.style }} --name ci-app --no-install "${{ runner.temp }}/ci-app-${{ matrix.flavor }}-${{ matrix.schema }}-${{ matrix.db }}"
       - name: Install the scaffolded project
         working-directory: ${{ runner.temp }}/ci-app-${{ matrix.flavor }}-${{ matrix.schema }}-${{ matrix.db }}
         run: bun install
@@ -202,7 +202,7 @@ jobs:
         run: npm install --omit=dev --ignore-scripts
       - name: Scaffold
         working-directory: artifact/package
-        run: node dist/index.js --${{ matrix.flavor }} --${{ matrix.schema }} --${{ matrix.db }} --name smoke-app --no-install "${{ runner.temp }}/smoke-app-${{ matrix.flavor }}-${{ matrix.schema }}-${{ matrix.db }}"
+        run: node dist/index.js --${{ matrix.flavor }} --${{ matrix.schema }} --${{ matrix.db }} --${{ matrix.style }} --name smoke-app --no-install "${{ runner.temp }}/smoke-app-${{ matrix.flavor }}-${{ matrix.schema }}-${{ matrix.db }}"
       - name: Install
         working-directory: ${{ runner.temp }}/smoke-app-${{ matrix.flavor }}-${{ matrix.schema }}-${{ matrix.db }}
         run: bun install

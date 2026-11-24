@@ -19,6 +19,7 @@ export default defineConfig({
       "cli/overlays/**",
       "client/dist/**",
       "client-angular/**",
+      "client/variants/**",
       "client/src/routeTree.gen.ts",
       "client/.tanstack/**",
       "server/data/**",

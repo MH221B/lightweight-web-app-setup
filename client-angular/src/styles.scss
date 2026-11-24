@@ -1,0 +1,28 @@
+@use "./styles/tokens" as tokens;
+
+:root {
+  --color-bg: #{tokens.$color-bg};
+  --color-surface: #{tokens.$color-surface};
+  --color-text: #{tokens.$color-text};
+  --color-muted: #{tokens.$color-muted};
+  --color-border: #{tokens.$color-border};
+  --color-accent: #{tokens.$color-accent};
+  --color-accent-contrast: #{tokens.$color-accent-contrast};
+  --color-alert: #{tokens.$color-alert};
+  color-scheme: light;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: tokens.$font-body;
+  font-size: tokens.$size-body;
+  line-height: 1.5;
+}

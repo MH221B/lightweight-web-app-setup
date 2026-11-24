@@ -7,7 +7,14 @@ import { fileURLToPath } from "node:url";
 import { bootstrap, quotePath } from "../src/bootstrap.ts";
 import { findLeftovers, type Flavor } from "../src/rename.ts";
 import { OPTIONS } from "../src/options.ts";
-import { COMBOS, scaffold, templatesRoot, type DbEngine, type SchemaLib } from "../src/scaffold.ts";
+import {
+  COMBOS,
+  scaffold,
+  templatesRoot,
+  type DbEngine,
+  type SchemaLib,
+  type StyleChoice,
+} from "../src/scaffold.ts";
 
 interface PackageJson {
   name?: string;
@@ -15,6 +22,7 @@ interface PackageJson {
   scripts?: Record<string, string>;
   overrides?: Record<string, string | Record<string, string>>;
   dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
 }
 
 interface AngularJson {
@@ -23,7 +31,9 @@ interface AngularJson {
 
 interface AngularProject {
   prefix?: string;
+  schematics?: Record<string, { style?: string }>;
   architect?: {
+    build?: { options?: { styles?: string[]; inlineStyleLanguage?: string } };
     serve?: { configurations?: Record<string, { buildTarget?: string }> };
   };
 }
@@ -64,6 +74,7 @@ async function assertScaffold(
   dir: string,
   schema: SchemaLib = "zod",
   db: DbEngine = "sqlite",
+  style: StyleChoice = "scss",
 ): Promise<void> {
   const sharedPkg = await readJson<PackageJson>(join(dir, "shared", "package.json"));
   const serverPkg = await readJson<PackageJson>(join(dir, "server", "package.json"));
@@ -233,6 +244,127 @@ async function assertScaffold(
   const clientPkg = await readJson<PackageJson>(join(dir, chosen, "package.json"));
   expect(clientPkg.name).toBe(CLIENT_PACKAGE);
 
+  // Styling assertions, keyed off the selected client's manifest.
+  const stylingPackage = (name: string) => clientPkg.devDependencies?.[name];
+
+  if (flavor === "react") {
+    const main = await readFile(join(dir, "client", "src", "main.tsx"), "utf8");
+    const scssFiles = (await walk(join(dir, "client"))).filter((file) => file.endsWith(".scss"));
+    const hasTailwindEntry =
+      (await stat(join(dir, "client", "src", "tailwind.css")).catch(() => null)) !== null;
+
+    if (style === "scss") {
+      expect(scssFiles.sort()).toEqual(["src/styles.scss", "src/styles/_tokens.scss"]);
+      const entry = await readFile(join(dir, "client", "src", "styles.scss"), "utf8");
+      expect(entry).toContain('@use "./styles/tokens"');
+      expect(entry).toContain("&:focus-visible");
+      expect(main).toContain('import "./styles.scss";');
+      expect(stylingPackage("sass-embedded")).toBe("1.108.2");
+      expect(stylingPackage("tailwindcss")).toBeUndefined();
+      expect(stylingPackage("@tailwindcss/vite")).toBeUndefined();
+      expect(hasTailwindEntry).toBe(false);
+    } else if (style === "tailwind") {
+      expect(scssFiles).toEqual([]);
+      expect(await readFile(join(dir, "client", "src", "tailwind.css"), "utf8")).toContain(
+        '@import "tailwindcss";',
+      );
+      expect(await readFile(join(dir, "client", "vite.config.ts"), "utf8")).toContain(
+        'from "@tailwindcss/vite"',
+      );
+      expect(main).toContain('import "./tailwind.css";');
+      expect(main).not.toContain("./styles.scss");
+      expect(stylingPackage("sass-embedded")).toBeUndefined();
+      expect(stylingPackage("tailwindcss")).toBe("4.3.5");
+      expect(stylingPackage("@tailwindcss/vite")).toBe("4.3.5");
+    } else {
+      expect(scssFiles.sort()).toEqual(["src/styles.scss", "src/styles/_tokens.scss"]);
+      expect(hasTailwindEntry).toBe(true);
+      expect(main).toContain('import "./tailwind.css";');
+      expect(main).toContain('import "./styles.scss";');
+      expect(main.indexOf('import "./tailwind.css";')).toBeLessThan(
+        main.indexOf('import "./styles.scss";'),
+      );
+      expect(stylingPackage("sass-embedded")).toBe("1.108.2");
+      expect(stylingPackage("tailwindcss")).toBe("4.3.5");
+      expect(stylingPackage("@tailwindcss/vite")).toBe("4.3.5");
+    }
+    expect(await stat(join(dir, "server", "src", "styles.scss")).catch(() => null)).toBeNull();
+    expect(await stat(join(dir, "shared", "tailwind.css")).catch(() => null)).toBeNull();
+  } else {
+    const angularJson = await readJson<AngularJson>(join(dir, "client-angular", "angular.json"));
+    const angularJsonText = await readFile(join(dir, "client-angular", "angular.json"), "utf8");
+    const project = angularJson.projects?.[CLIENT_PACKAGE];
+    const buildOptions = project?.architect?.build?.options;
+    const componentStyle = project?.schematics?.["@schematics/angular:component"]?.style;
+    const app = await readFile(join(dir, "client-angular", "src", "app", "app.ts"), "utf8");
+    const notesPageFile = await readFile(
+      join(dir, "client-angular", "src", "app", "notes", "notes-page.ts"),
+      "utf8",
+    );
+    const scssFiles = (await walk(join(dir, "client-angular", "src"))).filter((file) =>
+      file.endsWith(".scss"),
+    );
+    const postcss =
+      (await stat(join(dir, "client-angular", ".postcssrc.json")).catch(() => null)) !== null;
+
+    // The rename must not re-serialize angular.json: Oxfmt keeps short arrays
+    // inline, so an expanded `styles` block fails the generated project's check.
+    expect(angularJsonText).toContain(
+      {
+        scss: '"styles": ["src/styles.scss"]',
+        tailwind: '"styles": ["src/tailwind.css"]',
+        both: '"styles": ["src/tailwind.css", "src/styles.scss"]',
+      }[style],
+    );
+
+    if (style === "scss") {
+      expect(buildOptions?.styles).toEqual(["src/styles.scss"]);
+      expect(buildOptions?.inlineStyleLanguage).toBe("scss");
+      expect(componentStyle).toBe("scss");
+      expect(app).toContain('styleUrl: "./app.scss"');
+      expect(notesPageFile).toContain('styleUrl: "./notes-page.scss"');
+      expect(scssFiles.sort()).toEqual([
+        "app/app.scss",
+        "app/notes/notes-page.scss",
+        "styles.scss",
+        "styles/_tokens.scss",
+      ]);
+      expect(postcss).toBe(false);
+      expect(stylingPackage("sass-embedded")).toBe("1.108.2");
+      expect(stylingPackage("tailwindcss")).toBeUndefined();
+    } else if (style === "tailwind") {
+      expect(buildOptions?.styles).toEqual(["src/tailwind.css"]);
+      expect(buildOptions?.inlineStyleLanguage).toBeUndefined();
+      expect(componentStyle).toBe("css");
+      expect(app).not.toContain("styleUrl");
+      expect(notesPageFile).not.toContain("styleUrl");
+      expect(scssFiles).toEqual([]);
+      expect(postcss).toBe(true);
+      expect(
+        await readJson<{ plugins: Record<string, unknown> }>(
+          join(dir, "client-angular", ".postcssrc.json"),
+        ),
+      ).toEqual({ plugins: { "@tailwindcss/postcss": {} } });
+      expect(stylingPackage("sass-embedded")).toBeUndefined();
+      expect(stylingPackage("tailwindcss")).toBe("4.3.5");
+      expect(stylingPackage("@tailwindcss/postcss")).toBe("4.3.5");
+      expect(stylingPackage("postcss")).toBe("8.5.32");
+    } else {
+      expect(buildOptions?.styles).toEqual(["src/tailwind.css", "src/styles.scss"]);
+      expect(buildOptions?.inlineStyleLanguage).toBe("scss");
+      expect(componentStyle).toBe("scss");
+      expect(app).toContain('styleUrl: "./app.scss"');
+      expect(notesPageFile).toContain('styleUrl: "./notes-page.scss"');
+      expect(postcss).toBe(true);
+      expect(stylingPackage("sass-embedded")).toBe("1.108.2");
+      expect(stylingPackage("tailwindcss")).toBe("4.3.5");
+      expect(stylingPackage("@tailwindcss/postcss")).toBe("4.3.5");
+      expect(stylingPackage("postcss")).toBe("8.5.32");
+    }
+    expect(await stat(join(dir, "server", "src", "styles.scss")).catch(() => null)).toBeNull();
+    expect(await stat(join(dir, "shared", "tailwind.css")).catch(() => null)).toBeNull();
+  }
+
   const filters = Object.entries(pkg.scripts ?? {}).flatMap(([key, value]) =>
     [...value.matchAll(/--filter\s+(\S+)/g)].map((match) => ({ key, target: match[1] })),
   );
@@ -346,10 +478,15 @@ async function assertScaffold(
     );
     expect(readme).not.toContain("oRPC v1, Effect, Zod, Drizzle, SQLite");
   }
+
+  expect(readme).toContain(
+    "Client styling is configured in the client directory. See its package manifest and stylesheet entries for the selected setup.",
+  );
+  expect(readme).not.toContain("The checked-in React and Angular clients use SCSS.");
 }
 
 for (const combo of COMBOS) {
-  test(`scaffolds ${combo.flavor} ${combo.schema} ${combo.db}`, async () => {
+  test(`scaffolds ${combo.flavor} ${combo.schema} ${combo.db} ${combo.style}`, async () => {
     const dir = await makeTarget(combo.flavor);
     const result = await scaffold({
       flavor: combo.flavor,
@@ -357,10 +494,12 @@ for (const combo of COMBOS) {
       targetDir: dir,
       schema: combo.schema,
       db: combo.db,
+      style: combo.style,
     });
     expect(result.schema).toBe(combo.schema);
     expect(result.db).toBe(combo.db);
-    await assertScaffold(combo.flavor, dir, combo.schema, combo.db);
+    expect(result.style).toBe(combo.style);
+    await assertScaffold(combo.flavor, dir, combo.schema, combo.db, combo.style);
   });
 }
 
@@ -671,6 +810,114 @@ test("rejects conflicting database flags before writing", async () => {
   );
   expect(result.status).toBe(1);
   expect(`${result.stdout}${result.stderr}`).toContain("Choose one of --sqlite or --postgres.");
+  expect(await stat(dir).catch(() => null)).toBeNull();
+});
+
+test("layers a styling overlay on a schema overlay", async () => {
+  const dir = await makeTarget("react");
+  const result = await scaffold({
+    flavor: "react",
+    projectName: PROJECT,
+    targetDir: dir,
+    schema: "zod",
+    db: "postgres",
+    style: "tailwind",
+  });
+
+  expect(result.style).toBe("tailwind");
+  expect(result.removed).toEqual([
+    "server/drizzle.config.ts",
+    "server/drizzle/",
+    "client/src/styles.scss",
+    "client/src/styles/",
+  ]);
+  expect(await readFile(join(dir, "client", "src", "tailwind.css"), "utf8")).toContain(
+    '@import "tailwindcss";',
+  );
+  expect(await stat(join(dir, "client", "src", "styles.scss")).catch(() => null)).toBeNull();
+  expect(await stat(join(dir, "client", "src", "styles")).catch(() => null)).toBeNull();
+  expect(await readFile(join(dir, "server", "src", "db.ts"), "utf8")).toContain(
+    "drizzle-orm/postgres-js",
+  );
+  expect((await stat(join(dir, "server", "drizzle-pg", "meta", "_journal.json"))).isFile()).toBe(
+    true,
+  );
+  expect(await readFile(join(dir, "README.md"), "utf8")).toContain("DATABASE_URL");
+});
+
+test("keeps a user-owned stylesheet at a styling removal path", async () => {
+  const dir = await makeTarget("react");
+  const own = join(dir, "client", "src", "styles.scss");
+  const text = "/* mine */\n";
+  await mkdir(dirname(own), { recursive: true });
+  await writeFile(own, text);
+
+  const result = await scaffold({
+    flavor: "react",
+    projectName: PROJECT,
+    targetDir: dir,
+    schema: "zod",
+    db: "sqlite",
+    style: "tailwind",
+  });
+
+  expect(await readFile(own, "utf8")).toBe(text);
+  expect(result.removed).toEqual(["client/src/styles/"]);
+  expect(result.skipped).toContain("client/src/styles.scss");
+  expect(await readFile(join(dir, "client", "src", "tailwind.css"), "utf8")).toContain(
+    '@import "tailwindcss";',
+  );
+  expect(await readFile(join(dir, "client", "src", "routes", "__root.tsx"), "utf8")).toContain(
+    "max-w-2xl",
+  );
+  expect(await stat(join(dir, "client", "src", "styles")).catch(() => null)).toBeNull();
+});
+
+test("syncs the Angular PostCSS dotfile through the overlay map", async () => {
+  expect(
+    (
+      await stat(
+        join(
+          REPO_ROOT,
+          "cli",
+          "overlays",
+          "angular",
+          "style-tailwind",
+          "client-angular",
+          "_postcssrc.json",
+        ),
+      )
+    ).isFile(),
+  ).toBe(true);
+
+  const dir = await makeTarget("angular");
+  await scaffold({
+    flavor: "angular",
+    projectName: PROJECT,
+    targetDir: dir,
+    schema: "zod",
+    db: "sqlite",
+    style: "tailwind",
+  });
+  const postcss = await readJson<{ plugins: Record<string, unknown> }>(
+    join(dir, "client-angular", ".postcssrc.json"),
+  );
+  expect(Object.keys(postcss.plugins)).toEqual(["@tailwindcss/postcss"]);
+  expect(await stat(join(dir, "client-angular", "_postcssrc.json")).catch(() => null)).toBeNull();
+});
+
+test("rejects conflicting styling flags before writing", async () => {
+  const dir = await makeTarget("react");
+  const env = { ...process.env, LWAPP_TEMPLATES_DIR: templatesRoot() };
+  const result = spawnSync(
+    "node",
+    [CLI_ENTRY, "--react", "--scss", "--tailwind", "--name", PROJECT, "--no-install", dir],
+    { encoding: "utf8", env },
+  );
+  expect(result.status).toBe(1);
+  expect(`${result.stdout}${result.stderr}`).toContain(
+    "Choose one of --scss, --tailwind, or --both.",
+  );
   expect(await stat(dir).catch(() => null)).toBeNull();
 });
 

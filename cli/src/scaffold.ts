@@ -1,8 +1,15 @@
 import { mkdir, readFile, readdir, rm, rmdir, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { DOTFILES, overlaySetFor, type DbEngine, type SchemaLib } from "./template-config.ts";
-export type { DbEngine, SchemaLib } from "./template-config.ts";
+import {
+  DOTFILES,
+  STYLE_OVERLAYS,
+  overlaySetFor,
+  type DbEngine,
+  type SchemaLib,
+  type StyleChoice,
+} from "./template-config.ts";
+export type { DbEngine, SchemaLib, StyleChoice } from "./template-config.ts";
 import {
   findLeftovers,
   humanize,
@@ -18,9 +25,31 @@ const DOTFILE_NAMES = Object.fromEntries(
 
 export const COMBOS = (["react", "angular"] as const).flatMap((flavor) =>
   (["zod", "effect"] as const).flatMap((schema) =>
-    (["sqlite", "postgres"] as const).map((db) => ({ flavor, schema, db })),
+    (["sqlite", "postgres"] as const).flatMap((db) =>
+      (["scss", "tailwind", "both"] as const).map((style) => ({ flavor, schema, db, style })),
+    ),
   ),
 );
+
+// The heavy CI workflows run this sample: every flavor and schema and database
+// with the default style, plus both Tailwind styles on the cheapest quad. The
+// full 24-case COMBOS oracle still runs in `bun run test:cli`.
+export const CI_COMBOS = (["react", "angular"] as const).flatMap((flavor) => [
+  ...(["zod", "effect"] as const).flatMap((schema) =>
+    (["sqlite", "postgres"] as const).map((db) => ({
+      flavor,
+      schema,
+      db,
+      style: "scss" as const,
+    })),
+  ),
+  ...(["tailwind", "both"] as const).map((style) => ({
+    flavor,
+    schema: "zod" as const,
+    db: "sqlite" as const,
+    style,
+  })),
+]);
 
 export interface ScaffoldOptions {
   flavor: Flavor;
@@ -29,6 +58,7 @@ export interface ScaffoldOptions {
   templatesDir?: string;
   schema: SchemaLib;
   db: DbEngine;
+  style?: StyleChoice;
 }
 
 export interface ScaffoldResult {
@@ -38,6 +68,7 @@ export interface ScaffoldResult {
   flavor: Flavor;
   schema: SchemaLib;
   db: DbEngine;
+  style: StyleChoice;
   skipped: string[];
   removed: string[];
 }
@@ -155,10 +186,14 @@ function parentPath(path: string): string {
 }
 
 export async function scaffold(options: ScaffoldOptions): Promise<ScaffoldResult> {
+  const style = options.style ?? "scss";
   if (
     !COMBOS.some(
-      ({ flavor, schema, db }) =>
-        flavor === options.flavor && schema === options.schema && db === options.db,
+      ({ flavor, schema, db, style: candidate }) =>
+        flavor === options.flavor &&
+        schema === options.schema &&
+        db === options.db &&
+        candidate === style,
     )
   )
     throw new Error("Unsupported scaffold combination");
@@ -175,17 +210,20 @@ export async function scaffold(options: ScaffoldOptions): Promise<ScaffoldResult
   }
 
   const set = overlaySetFor(options.schema, options.db);
-  const overlayDir =
-    set === null ? null : join(dirname(templatesDir), "overlays", options.flavor, set);
-  let removals: string[] = [];
-  if (overlayDir !== null) {
+  const styleOverlay = STYLE_OVERLAYS[style];
+  const overlaySets: string[] = [];
+  if (set !== null) overlaySets.push(set);
+  if (styleOverlay !== null) overlaySets.push(styleOverlay);
+  const overlays: Array<{ dir: string; removals: string[] }> = [];
+  for (const overlaySet of overlaySets) {
+    const overlayDir = join(dirname(templatesDir), "overlays", options.flavor, overlaySet);
     const overlayInfo = await stat(overlayDir).catch(() => null);
     if (!overlayInfo?.isDirectory()) {
       throw new Error(
-        `Missing overlay "${set}" for "${options.flavor}" at ${overlayDir}. Run "bun run templates:sync".`,
+        `Missing overlay "${overlaySet}" for "${options.flavor}" at ${overlayDir}. Run "bun run templates:sync".`,
       );
     }
-    removals = await readRemovals(overlayDir);
+    overlays.push({ dir: overlayDir, removals: await readRemovals(overlayDir) });
   }
   const targetDir = resolve(options.targetDir);
   if (set === null) {
@@ -202,11 +240,11 @@ export async function scaffold(options: ScaffoldOptions): Promise<ScaffoldResult
   const skipped: string[] = [];
   await copyTree(templateDir, targetDir, written, skipped);
 
-  let removed: string[] = [];
-  if (overlayDir !== null) {
-    // Removals first: the pg set then writes its own drizzle.config.ts over the freed path.
-    removed = await applyRemovals(removals, targetDir, written);
-    await copyTree(overlayDir, targetDir, written, skipped, true);
+  const removed: string[] = [];
+  for (const overlay of overlays) {
+    // Removals first: each overlay frees its own paths before writing.
+    removed.push(...(await applyRemovals(overlay.removals, targetDir, written)));
+    await copyTree(overlay.dir, targetDir, written, skipped, true);
   }
 
   const displayName = humanize(options.projectName);
@@ -238,6 +276,7 @@ export async function scaffold(options: ScaffoldOptions): Promise<ScaffoldResult
     flavor: options.flavor,
     schema: options.schema,
     db: options.db,
+    style: style,
     skipped: skipped,
     removed: removed,
   };

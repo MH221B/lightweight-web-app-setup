@@ -13,6 +13,9 @@ export const OPTIONS = [
   { flags: "--effect", description: "Validate with Effect Schema", group: "schema" },
   { flags: "--sqlite", description: "Store data in SQLite (default)", group: "database" },
   { flags: "--postgres", description: "Store data in PostgreSQL", group: "database" },
+  { flags: "--scss", description: "Style with SCSS (default)", group: "styling" },
+  { flags: "--tailwind", description: "Style with Tailwind CSS", group: "styling" },
+  { flags: "--both", description: "Use SCSS and Tailwind CSS together", group: "styling" },
   {
     flags: "--name <name>",
     description: "Project and npm package name (defaults to target directory without a TTY)",
@@ -27,8 +30,9 @@ const examples = [
   "npx lwapp --angular my-app",
   "npx lwapp --react --effect my-app",
   "npx lwapp --react --postgres my-app",
+  "npx lwapp --react --tailwind my-app",
 ];
-const groups = ["flavor", "schema", "database"] as const;
+const groups = ["flavor", "schema", "database", "styling"] as const;
 const flags = groups.map((group) =>
   OPTIONS.filter((option) => "group" in option && option.group === group)
     .map((option) => option.flags)

@@ -1,6 +1,7 @@
 import { confirm, input, select } from "@inquirer/prompts";
 import { validateProjectName, type Flavor } from "./rename.ts";
 import type { DbEngine, SchemaLib } from "./scaffold.ts";
+import type { StyleChoice } from "./template-config.ts";
 
 export async function askProjectName(): Promise<string> {
   return input({
@@ -42,6 +43,18 @@ export async function askDatabase(): Promise<DbEngine> {
     choices: [
       { name: "SQLite — default", value: "sqlite" },
       { name: "PostgreSQL", value: "postgres" },
+    ],
+  });
+}
+
+export async function askStyling(): Promise<StyleChoice> {
+  return select<StyleChoice>({
+    message: "Styling:",
+    default: "scss",
+    choices: [
+      { name: "SCSS — default", value: "scss" },
+      { name: "Tailwind CSS", value: "tailwind" },
+      { name: "SCSS and Tailwind CSS", value: "both" },
     ],
   });
 }

@@ -1,0 +1,103 @@
+@use "../../styles/tokens" as tokens;
+
+.panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: tokens.$radius;
+  padding: tokens.$space-4;
+  margin-top: tokens.$space-4;
+
+  h2 {
+    margin: 0 0 tokens.$space-3;
+    font-size: tokens.$size-subheading;
+  }
+}
+
+.note-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: tokens.$space-2;
+
+  label {
+    grid-column: 1 / -1;
+    font-size: tokens.$size-small;
+    color: var(--color-muted);
+  }
+
+  input,
+  button {
+    font: inherit;
+    padding: tokens.$space-2 tokens.$space-3;
+    border: 1px solid var(--color-border);
+    border-radius: tokens.$radius;
+  }
+
+  input {
+    min-width: 0;
+    background: #ffffff;
+    color: inherit;
+
+    &:focus-visible {
+      @include tokens.focus-ring;
+    }
+  }
+
+  button {
+    background: var(--color-accent);
+    border-color: var(--color-accent);
+    color: var(--color-accent-contrast);
+    font-weight: 600;
+    cursor: pointer;
+
+    &:hover:not(:disabled) {
+      background: var(--color-text);
+    }
+
+    &:disabled {
+      cursor: progress;
+      opacity: 0.7;
+    }
+
+    &:focus-visible {
+      @include tokens.focus-ring;
+    }
+  }
+}
+
+.note-list {
+  display: grid;
+  gap: tokens.$space-2;
+  margin: tokens.$space-4 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.note {
+  padding: tokens.$space-2 tokens.$space-3;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-accent);
+  border-radius: tokens.$radius;
+  overflow-wrap: anywhere;
+}
+
+.status {
+  margin: tokens.$space-3 0 0;
+  font-size: tokens.$size-small;
+  color: var(--color-muted);
+}
+
+.status--error {
+  color: var(--color-alert);
+}
+
+@media (max-width: #{tokens.$breakpoint-narrow}) {
+  .note-form {
+    grid-template-columns: minmax(0, 1fr);
+
+    button {
+      width: 100%;
+    }
+  }
+}
