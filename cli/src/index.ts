@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { readdir, stat } from "node:fs/promises";
-import { resolve } from "node:path";
+import { basename, resolve } from "node:path";
 import { styleText } from "node:util";
 import pkg from "../package.json";
 import { bootstrap } from "./bootstrap.ts";
@@ -79,7 +79,7 @@ async function isNonEmptyDirectory(path: string): Promise<boolean> {
 }
 
 async function main(): Promise<void> {
-  console.log(`mh-stack ${pkg.version}`);
+  console.log(`lwapp ${pkg.version}`);
   const argv = process.argv.slice(2).filter((arg) => arg !== "--");
   const parsed = parseArgs(argv);
   if (parsed.help) {
@@ -90,8 +90,13 @@ async function main(): Promise<void> {
 
   const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY);
   let { flavor, name, target, schema, db } = parsed;
-  if (!flavor || !name || !target) {
-    if (!interactive) fail(RECIPE);
+  if (!interactive) {
+    if (!flavor || !target) fail(RECIPE);
+    if (name === undefined) {
+      name = basename(resolve(target));
+      const invalid = validateProjectName(name);
+      if (invalid) fail(`${invalid} Specify a valid project name with --name <name>.`);
+    }
   }
   if (name !== undefined) {
     const invalid = validateProjectName(name);

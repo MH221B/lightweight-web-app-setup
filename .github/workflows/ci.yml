@@ -43,14 +43,14 @@ jobs:
           cd cli
           npm pack --pack-destination ../artifact
           cd ..
-          tar -xzf artifact/mh-stack-*.tgz -C artifact
+          tar -xzf artifact/lwapp-*.tgz -C artifact
       - name: Install the packed runtime dependency
         working-directory: artifact/package
         run: npm install --omit=dev --ignore-scripts
       - name: Artifact smoke
         env:
-          MH_STACK_TEMPLATES_DIR: ${{ github.workspace }}/artifact/package/templates
-          MH_STACK_CLI_ENTRY: ${{ github.workspace }}/artifact/package/dist/index.js
+          LWAPP_TEMPLATES_DIR: ${{ github.workspace }}/artifact/package/templates
+          LWAPP_CLI_ENTRY: ${{ github.workspace }}/artifact/package/dist/index.js
         run: bun test cli/test
   postgres:
     runs-on: ubuntu-latest
@@ -60,16 +60,16 @@ jobs:
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: mh_stack
+          POSTGRES_DB: lwapp
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U postgres -d mh_stack"
+          --health-cmd "pg_isready -U postgres -d lwapp"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
     env:
-      DATABASE_URL: postgres://postgres:postgres@localhost:5432/mh_stack
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/lwapp
       STARTER_REQUIRE_POSTGRES: "1"
     steps:
       - uses: actions/checkout@v7
@@ -149,7 +149,7 @@ jobs:
           cd cli
           npm pack --pack-destination ../artifact
           cd ..
-          tar -xzf artifact/mh-stack-*.tgz -C artifact
+          tar -xzf artifact/lwapp-*.tgz -C artifact
       - name: Install the packed runtime dependency
         working-directory: artifact/package
         run: npm install --omit=dev --ignore-scripts
@@ -196,7 +196,7 @@ jobs:
           cd cli
           npm pack --pack-destination ../artifact
           cd ..
-          tar -xzf artifact/mh-stack-*.tgz -C artifact
+          tar -xzf artifact/lwapp-*.tgz -C artifact
       - name: Install the packed runtime dependency
         working-directory: artifact/package
         run: npm install --omit=dev --ignore-scripts

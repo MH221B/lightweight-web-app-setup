@@ -1,4 +1,4 @@
-# mh-stack
+# lwapp
 
 Scaffold a fresh Bun monorepo from the lightweight web app starter. Choose a client flavor and a validation library:
 
@@ -12,7 +12,7 @@ Both flavors sit against the same NestJS/Fastify API, oRPC v1 contract, and Driz
 ## Usage
 
 ```bash
-npx mh-stack
+npx lwapp
 ```
 
 The CLI asks for a project name, a framework, a schema library, a database, and a target directory. It copies the matching starter, renames the root package, the client package, every workspace `--filter` reference, the Angular project key/targets/prefix and selectors, the page title and heading, and the README title. Existing files are never overwritten; any skipped path is printed. Variant conflicts and existing files whose variant cannot be determined stop scaffolding. It then runs `bun install` plus the database migration when Bun is on `PATH`.
@@ -20,15 +20,15 @@ The CLI asks for a project name, a framework, a schema library, a database, and 
 ### Non-interactive
 
 ```bash
-npx mh-stack --react --name my-app my-app
-npx mh-stack --react --effect --name my-app my-app
-npx mh-stack --angular --name my-app my-app
-npx mh-stack --react --postgres --name my-app my-app
-npx mh-stack --angular --effect --postgres --name my-app my-app
-npx mh-stack --react --name my-app --no-install my-app
+npx lwapp --react my-app
+npx lwapp --react --effect my-app
+npx lwapp --angular my-app
+npx lwapp --react --postgres my-app
+npx lwapp --angular --effect --postgres my-app
+npx lwapp --react --no-install my-app
 ```
 
-A non-TTY run missing `--react`/`--angular`, `--name`, or the target directory exits with this recipe instead of silently choosing a framework. `--zod` and `--sqlite` are the unattended defaults.
+A non-TTY run missing `--react`/`--angular` or the target directory exits with this recipe instead of silently choosing a framework. The project name defaults to the resolved target directory's basename; use `--name <name>` to override it, including when the directory name is not a valid project name. `--zod` and `--sqlite` are the unattended defaults.
 
 ### Flags
 

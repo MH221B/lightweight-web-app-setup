@@ -1,5 +1,5 @@
 {
-  "name": "mh-stack",
+  "name": "lwapp",
   "version": "0.1.0",
   "description": "Scaffold a React or Angular Bun monorepo from the lightweight web app starter.",
   "license": "MIT",
@@ -9,7 +9,7 @@
     "directory": "cli"
   },
   "bin": {
-    "mh-stack": "dist/index.js"
+    "lwapp": "dist/index.js"
   },
   "files": [
     "dist",

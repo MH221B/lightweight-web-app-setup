@@ -29,7 +29,7 @@ interface AngularProject {
 }
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const CLI_ENTRY = process.env.MH_STACK_CLI_ENTRY ?? join(REPO_ROOT, "cli", "dist", "index.js");
+const CLI_ENTRY = process.env.LWAPP_CLI_ENTRY ?? join(REPO_ROOT, "cli", "dist", "index.js");
 const PROJECT = "acme-notes";
 const DISPLAY = "Acme Notes";
 const CLIENT_PACKAGE = `${PROJECT}-client`;
@@ -43,7 +43,7 @@ async function readJson<T>(file: string): Promise<T> {
 }
 
 async function makeTarget(flavor: Flavor, name = PROJECT): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), `mh-stack-${flavor}-`));
+  const root = await mkdtemp(join(tmpdir(), `lwapp-${flavor}-`));
   created.push(root);
   return join(root, name);
 }
@@ -529,7 +529,7 @@ test("prints literal paths in both next steps and manual instructions", async ()
 test.skipIf(process.platform !== "win32")(
   "resolves relative Windows PATH entries absolutely",
   async () => {
-    const root = await mkdtemp(join(tmpdir(), "mh-stack-path-"));
+    const root = await mkdtemp(join(tmpdir(), "lwapp-path-"));
     created.push(root);
     await mkdir(join(root, "tools"));
     await link(process.execPath, join(root, "tools", "bun.exe"));
@@ -553,9 +553,14 @@ test("prints the flag recipe when stdin is not a TTY", () => {
   const result = spawnSync("node", [CLI_ENTRY], { encoding: "utf8", input: "" });
   const output = `${result.stdout}${result.stderr}`;
   expect(result.status).not.toBe(0);
-  expect(output).toContain("mh-stack needs a TTY for prompts. Non-interactive usage:");
-  expect(output).toContain("npx mh-stack --react --name my-app my-app");
-  expect(output).toContain("npx mh-stack --angular --name my-app my-app");
+  expect(output).toContain("lwapp needs a TTY for prompts. Non-interactive usage:");
+  expect(output).toContain("npx lwapp --react my-app");
+  expect(output).toContain("npx lwapp --angular my-app");
+  for (const args of [["--react"], ["my-app"]]) {
+    const missing = spawnSync("node", [CLI_ENTRY, ...args], { encoding: "utf8", input: "" });
+    expect(missing.status).toBe(1);
+    expect(missing.stderr).toContain("lwapp needs a TTY for prompts. Non-interactive usage:");
+  }
   for (const option of OPTIONS) {
     expect(output).toContain(option.flags.replace(/^-[a-z], /, ""));
   }
@@ -567,9 +572,40 @@ test("prints the flag recipe when stdin is not a TTY", () => {
   }
 });
 
+test("derives and validates non-interactive names, with an explicit override", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lwapp-name-"));
+  created.push(root);
+  const env = { ...process.env, LWAPP_TEMPLATES_DIR: templatesRoot() };
+  const dir = join(root, "derived-app");
+  const derived = spawnSync("node", [CLI_ENTRY, "--react", "--no-install", join(dir, ".")], {
+    encoding: "utf8",
+    env,
+  });
+  expect(derived.status).toBe(0);
+  expect((await readJson<PackageJson>(join(dir, "package.json"))).name).toBe("derived-app");
+
+  const invalidDir = join(root, "Invalid Name");
+  const invalid = spawnSync("node", [CLI_ENTRY, "--react", "--no-install", invalidDir], {
+    encoding: "utf8",
+    env,
+  });
+  expect(invalid.status).toBe(1);
+  expect(invalid.stderr).toContain("Use lowercase letters, digits, and hyphens only");
+  expect(invalid.stderr).toContain("--name <name>");
+  expect(await stat(invalidDir).catch(() => null)).toBeNull();
+
+  const override = spawnSync(
+    "node",
+    [CLI_ENTRY, "--react", "--name", "override-app", "--no-install", invalidDir],
+    { encoding: "utf8", env },
+  );
+  expect(override.status).toBe(0);
+  expect((await readJson<PackageJson>(join(invalidDir, "package.json"))).name).toBe("override-app");
+});
+
 test("prints DATABASE_URL in the postgres manual recipe", async () => {
   const dir = await makeTarget("react");
-  const env = { ...process.env, PATH: "", MH_STACK_TEMPLATES_DIR: templatesRoot() };
+  const env = { ...process.env, PATH: "", LWAPP_TEMPLATES_DIR: templatesRoot() };
   const result = spawnSync(
     process.execPath,
     [CLI_ENTRY, "--react", "--postgres", "--name", PROJECT, dir],
@@ -587,13 +623,13 @@ test("prints DATABASE_URL in the postgres manual recipe", async () => {
 test("spawned entry scaffolds the react flavor", async () => {
   const dir = await makeTarget("react");
   const env = { ...process.env };
-  if (!env.MH_STACK_TEMPLATES_DIR) env.MH_STACK_TEMPLATES_DIR = templatesRoot();
+  if (!env.LWAPP_TEMPLATES_DIR) env.LWAPP_TEMPLATES_DIR = templatesRoot();
   const result = spawnSync("node", [CLI_ENTRY, "--react", "--name", PROJECT, "--no-install", dir], {
     encoding: "utf8",
     env,
   });
   expect(result.status).toBe(0);
-  expect(result.stdout.split("\n")[0]).toBe(`mh-stack ${version}`);
+  expect(result.stdout.split("\n")[0]).toBe(`lwapp ${version}`);
   expect((await stat(join(dir, "client"))).isDirectory()).toBe(true);
   const shared = await readJson<PackageJson>(join(dir, "shared", "package.json"));
   expect(shared.dependencies?.zod).toBeDefined();
@@ -605,7 +641,7 @@ test("spawned entry scaffolds the angular flavor", async () => {
   // Deliberately unset: this child must resolve templates next to its own entry
   // (`dist/../templates`), which is the packaged default the artifact smoke uses.
   const env = { ...process.env };
-  delete env.MH_STACK_TEMPLATES_DIR;
+  delete env.LWAPP_TEMPLATES_DIR;
   const result = spawnSync(
     "node",
     [CLI_ENTRY, "--angular", "--effect", "--postgres", "--name", PROJECT, "--no-install", dir],
@@ -615,7 +651,7 @@ test("spawned entry scaffolds the angular flavor", async () => {
     },
   );
   expect(result.status).toBe(0);
-  expect(result.stdout.split("\n")[0]).toBe(`mh-stack ${version}`);
+  expect(result.stdout.split("\n")[0]).toBe(`lwapp ${version}`);
   expect(result.stdout).toContain("DATABASE_URL");
   expect(result.stdout).toContain("bun run db:migrate");
   expect(result.stdout.indexOf("DATABASE_URL")).toBeLessThan(result.stdout.indexOf("Done."));
@@ -627,7 +663,7 @@ test("spawned entry scaffolds the angular flavor", async () => {
 
 test("rejects conflicting database flags before writing", async () => {
   const dir = await makeTarget("react");
-  const env = { ...process.env, MH_STACK_TEMPLATES_DIR: templatesRoot() };
+  const env = { ...process.env, LWAPP_TEMPLATES_DIR: templatesRoot() };
   const result = spawnSync(
     "node",
     [CLI_ENTRY, "--react", "--sqlite", "--postgres", "--name", PROJECT, "--no-install", dir],

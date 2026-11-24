@@ -208,7 +208,7 @@ To rename rather than remove, replace `Notes` and `notes` consistently across th
 - `server/` — NestJS/Fastify on Bun, oRPC v1, Effect, Zod, Drizzle, SQLite (PostgreSQL twins under `server/src/variants/postgres/`)
 - `server/drizzle-pg/` — the PostgreSQL twin's committed migration history
 - `shared/` — `notes.meta.ts`, the oRPC v1 API contract, and the framework-free oRPC client both flavors import
-- [`cli/`](cli/README.md) — the `mh-stack` scaffolder and its tests
+- [`cli/`](cli/README.md) — the `lwapp` scaffolder and its tests
 - `server/data/` — persistent SQLite files (ignored)
 
 The diagram source is [`architecture.mmd`](architecture.mmd); the README uses [`architecture.svg`](architecture.svg).

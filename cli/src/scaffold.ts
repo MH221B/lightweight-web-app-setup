@@ -43,7 +43,7 @@ export interface ScaffoldResult {
 }
 
 export function templatesRoot(): string {
-  return resolve(process.env.MH_STACK_TEMPLATES_DIR ?? DEFAULT_TEMPLATES_DIR);
+  return resolve(process.env.LWAPP_TEMPLATES_DIR ?? DEFAULT_TEMPLATES_DIR);
 }
 
 function mappedName(name: string): string {
