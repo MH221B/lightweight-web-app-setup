@@ -40,6 +40,8 @@ The project-local `vite-plus@1.7.0` needs no global install. `vp dev` runs the R
 
 `client-angular/` is an Angular CLI 22 application with standalone components, zoneless change detection, OnPush by default, one hand-written route in `src/app/app.routes.ts`, Signal Forms for note input, and TanStack Angular Query for server state. It uses `ng build` and `ng serve`; `ng` does not support a Vite config.
 
+Angular dependency prebundling is disabled because Bun's isolated install places shared dependencies outside the Angular client's resolution path.
+
 - `bun run --filter client-angular build` — production build to `client-angular/dist`, with `index.html` at that root.
 - TypeScript is pinned to 6.0.3 inside `client-angular/` because Angular 22 accepts `>=6.0 <6.1`; the root and the React client stay on TypeScript 7.
 - No client tests, matching the React flavor. The server suite covers the shared data layer for both.
