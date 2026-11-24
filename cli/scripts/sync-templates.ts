@@ -895,7 +895,7 @@ const PG_README_EDITS: Array<[string, string]> = [
   ],
   [
     "Server tests use `bun:test` on purpose: they exercise the NestJS/Fastify app against an in-memory `bun:sqlite` database through the checked-in Drizzle migration. `bun run test` delegates to `bun test` in `server/`.",
-    "Server tests use `bun:test` on purpose: they exercise the NestJS/Fastify app against a temporary PostgreSQL database (`mh_test_<random>`) that the suite creates on the server named by `DATABASE_URL`, applies the checked-in migrations to, and drops afterwards; this needs `CREATEDB`. Databases you keep are never migrated or mutated — the suite connects to the named database only to administer its temporary one — and abrupt termination can leave a temporary database behind (cleanup is best-effort). Without `DATABASE_URL` the PostgreSQL tests skip. `bun run test` delegates to `bun test` in `server/`.",
+    "Server tests use `bun:test` on purpose: they exercise the NestJS/Fastify app against a temporary PostgreSQL database (`starter_test_<random>`) that the suite creates on the server named by `DATABASE_URL`, applies the checked-in migrations to, and drops afterwards; this needs `CREATEDB`. Databases you keep are never migrated or mutated — the suite connects to the named database only to administer its temporary one — and abrupt termination can leave a temporary database behind (cleanup is best-effort). Without `DATABASE_URL` the PostgreSQL tests skip. `bun run test` delegates to `bun test` in `server/`.",
   ],
   [
     "; the integration tests report `24 pass`, `0 fail`.",
@@ -947,7 +947,7 @@ const PG_DATABASE_SECTION = [
   "- The server connects with `postgres.js` through Drizzle's `postgres-js` adapter",
   "- Startup applies pending migrations automatically; logs show host and database name only, never credentials",
   "- Behind a transaction-mode pooler (PgBouncer, some hosted poolers) prepared statements fail: connect through the direct port for migrations, or pass `prepare: false` to `postgres()` if the provider requires it",
-  "- Integration tests create and drop their own temporary database (`mh_test_<random>`) on the server named by `DATABASE_URL`; this needs `CREATEDB`. Databases you keep are never migrated or mutated — the tests connect to the named database only to administer their temporary one — and abrupt termination can leave a temporary database behind (cleanup is best-effort)",
+  "- Integration tests create and drop their own temporary database (`starter_test_<random>`) on the server named by `DATABASE_URL`; this needs `CREATEDB`. Databases you keep are never migrated or mutated — the tests connect to the named database only to administer their temporary one — and abrupt termination can leave a temporary database behind (cleanup is best-effort)",
   "",
   "Generate a migration after changing `server/src/notes/schema.ts`:",
   "",

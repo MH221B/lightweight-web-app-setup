@@ -29,9 +29,9 @@ const suffix = randomUUID().replaceAll("-", "").slice(0, 12);
 // Owned-names ledger: the helper appends every database it creates. An
 // inherited value (the rehearsal or the local real run) is reused and left
 // in place; otherwise the probe owns a temp file and removes it.
-const inheritedLedger = process.env.MH_TEST_DB_NAMES_FILE ?? "";
-const ledger = inheritedLedger || join(tmpdir(), `mh-probe-owned-${suffix}.txt`);
-process.env.MH_TEST_DB_NAMES_FILE = ledger;
+const inheritedLedger = process.env.STARTER_TEST_DB_NAMES_FILE ?? "";
+const ledger = inheritedLedger || join(tmpdir(), `starter-probe-owned-${suffix}.txt`);
+process.env.STARTER_TEST_DB_NAMES_FILE = ledger;
 if (!inheritedLedger) await rm(ledger, { force: true });
 
 const admin = postgres(base, { max: 1, onnotice: () => {} });

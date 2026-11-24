@@ -70,7 +70,7 @@ jobs:
           --health-retries 20
     env:
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/mh_stack
-      MH_REQUIRE_POSTGRES: "1"
+      STARTER_REQUIRE_POSTGRES: "1"
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -104,7 +104,7 @@ jobs:
         working-directory: server
         run: |
           bun run test/test-database.probe.ts > pg-probe.log
-          grep -q '^url-override current=mh_test_' pg-probe.log
+          grep -q '^url-override current=starter_test_' pg-probe.log
           grep -q '^connect-denied rethrown=42501$' pg-probe.log
           grep -q '^creation-failure skip=null required=throw recorded=0$' pg-probe.log
           grep -q '^owned-names=[0-9][0-9]* remaining=0$' pg-probe.log
@@ -131,9 +131,9 @@ jobs:
       matrix: ${{ fromJSON(needs.combos.outputs.matrix) }}
     env:
       # Any existing database on the service supplies the server coordinates;
-      # the scaffolded suites create and drop their own mh_test_* databases.
+      # the scaffolded suites create and drop their own starter_test_* databases.
       DATABASE_URL: ${{ matrix.db == 'postgres' && 'postgres://postgres:postgres@localhost:5432/postgres' || '' }}
-      MH_REQUIRE_POSTGRES: ${{ matrix.db == 'postgres' && '1' || '' }}
+      STARTER_REQUIRE_POSTGRES: ${{ matrix.db == 'postgres' && '1' || '' }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -216,7 +216,7 @@ jobs:
         working-directory: ${{ runner.temp }}/smoke-app-${{ matrix.flavor }}-${{ matrix.schema }}-${{ matrix.db }}
         env:
           DATABASE_URL: ""
-          MH_REQUIRE_POSTGRES: ""
+          STARTER_REQUIRE_POSTGRES: ""
         run: |
           set -o pipefail
           bun run test 2>&1 | tee smoke-tests.log

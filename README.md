@@ -153,7 +153,7 @@ Generate PostgreSQL migrations with `bun run db:generate:pg`.
 DATABASE_URL=postgres://user:pass@localhost:5432/notes bun run --filter server test
 ```
 
-Integration tests create and drop a temporary database (`mh_test_<random>`) on the server named by `DATABASE_URL`; this needs `CREATEDB`. They connect to the named database only to administer the temporary one and never migrate or mutate databases you keep. Cleanup is best-effort; abrupt termination can leave the temporary database behind. Tests skip without `DATABASE_URL`. CI sets it with `MH_REQUIRE_POSTGRES=1` to run the PostgreSQL suite. Update both databases and their shared case tables together for storage changes.
+Integration tests create and drop a temporary database (`starter_test_<random>`) on the server named by `DATABASE_URL`; this needs `CREATEDB`. They connect to the named database only to administer the temporary one and never migrate or mutate databases you keep. Cleanup is best-effort; abrupt termination can leave the temporary database behind. Tests skip without `DATABASE_URL`. CI sets it with `STARTER_REQUIRE_POSTGRES=1` to run the PostgreSQL suite. Update both databases and their shared case tables together for storage changes.
 
 ## Schema variants
 

@@ -22,17 +22,17 @@ export class CreateDatabaseError extends Error {
 
 export const CREATEDB_NOTICE =
   "! DATABASE_URL role lacks CREATEDB: skipping the postgres integration tests";
-const NAME = /^mh_test_[0-9a-f]{12}$/;
+const NAME = /^starter_test_[0-9a-f]{12}$/;
 
 export async function postgresCapability() {
   const databaseUrl = process.env.DATABASE_URL ?? "";
-  const required = process.env.MH_REQUIRE_POSTGRES === "1";
-  if (required && !databaseUrl) throw new Error("MH_REQUIRE_POSTGRES=1 requires DATABASE_URL");
+  const required = process.env.STARTER_REQUIRE_POSTGRES === "1";
+  if (required && !databaseUrl) throw new Error("STARTER_REQUIRE_POSTGRES=1 requires DATABASE_URL");
   if (!databaseUrl)
     console.log("! DATABASE_URL is not set: skipping the postgres integration tests");
   const canProvision = databaseUrl !== "" && (await hasCreateDatabasePrivilege(databaseUrl));
   if (required && databaseUrl !== "" && !canProvision)
-    throw new Error("MH_REQUIRE_POSTGRES=1 requires a DATABASE_URL role with CREATEDB");
+    throw new Error("STARTER_REQUIRE_POSTGRES=1 requires a DATABASE_URL role with CREATEDB");
   if (databaseUrl !== "" && !canProvision) console.log(CREATEDB_NOTICE);
   return { databaseUrl, required, canProvision };
 }
@@ -124,7 +124,7 @@ async function dropDatabase(base: string, name: string): Promise<void> {
 }
 
 export async function createTestDatabase(base: string): Promise<TestDatabase> {
-  const name = `mh_test_${randomUUID().replaceAll("-", "").slice(0, 12)}`;
+  const name = `starter_test_${randomUUID().replaceAll("-", "").slice(0, 12)}`;
   if (!NAME.test(name)) throw new Error(`unexpected test database name: ${name}`);
   // Built before CREATE so an unsafe URL shape fails before anything exists.
   const url = temporaryDatabaseUrl(base, name);
@@ -175,14 +175,14 @@ export async function createTestDatabase(base: string): Promise<TestDatabase> {
 }
 
 /**
- * Record a database this run owns in MH_TEST_DB_NAMES_FILE. Unset (the
+ * Record a database this run owns in STARTER_TEST_DB_NAMES_FILE. Unset (the
  * default) makes it a no-op. The ledger is the cleanup assertion: a run
  * checks exactly its own names, so a concurrent run's databases — appearing
  * or vanishing — can never fail a correct run. The probe reuses the same
  * function for the databases it creates directly.
  */
 export async function recordOwnedDatabase(name: string): Promise<void> {
-  const file = process.env.MH_TEST_DB_NAMES_FILE;
+  const file = process.env.STARTER_TEST_DB_NAMES_FILE;
   if (file) await appendFile(file, `${name}\n`);
 }
 

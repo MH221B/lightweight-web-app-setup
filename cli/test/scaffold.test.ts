@@ -129,7 +129,7 @@ async function assertScaffold(
     expect(readme).not.toContain("SQLite");
     expect(readme).not.toContain("DATABASE_PATH");
     expect(readme).not.toContain("server/data/");
-    expect(readme).toContain("mh_test_<random>");
+    expect(readme).toContain("starter_test_<random>");
     expect(readme).toContain("CREATEDB");
     expect(readme).toContain("never migrated or mutated");
     expect(readme).toContain("best-effort");
