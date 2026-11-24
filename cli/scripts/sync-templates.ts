@@ -82,6 +82,7 @@ const EXCLUDED_PREFIXES = [
 const EXCLUDED_FILES = new Set([
   "architecture.theme.css",
   "bun.lock",
+  "CONTRIBUTING.md",
   "client/src/routeTree.gen.ts",
   "server/test/env-postgres.cases.ts",
 ]);
@@ -778,6 +779,24 @@ async function editReadme(flavor: Flavor, root: string): Promise<void> {
     "",
     where,
   );
+  const contributing = await diskReadFile(join(REPO_ROOT, "CONTRIBUTING.md"), "utf8");
+  const moved = ["Install", "Develop", "Build and static checks", "Verification"].map((heading) => {
+    const start = contributing.indexOf(`## ${heading}\n`);
+    if (start < 0) throw new SyncError(`CONTRIBUTING.md: missing section "## ${heading}"`);
+    const next = contributing.indexOf("\n## ", start + heading.length + 4);
+    const section = contributing.slice(start, next < 0 ? undefined : next).trim();
+    const sentinel = heading === "Install" ? "bun install" : README_SENTINELS[heading];
+    if (!sentinel) throw new SyncError(`CONTRIBUTING.md: no sentinel for section ${heading}`);
+    assertContains(section, sentinel, `CONTRIBUTING.md (## ${heading})`);
+    return heading === "Install" ? section : `## ${heading}\n\n${sentinel}`;
+  });
+  text = replaceOnce(
+    text,
+    "## Vite+ tooling\n",
+    `${moved.slice(0, 3).join("\n\n")}\n\n## Vite+ tooling\n`,
+    where,
+  );
+  text = `${text.trimEnd()}\n\n${moved[3]}\n`;
   for (const section of README_SECTIONS[flavor]) {
     const sentinel = README_SENTINELS[section.heading];
     if (!sentinel) throw new SyncError(`${where}: no sentinel for section ${section.heading}`);
