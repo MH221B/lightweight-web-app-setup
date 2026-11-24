@@ -1,6 +1,12 @@
 # Lightweight web app starter
 
-A copyable Bun workspace with two client flavors — React 19 and Angular 22 — against one NestJS/Fastify API on Bun. The Notes example is intentionally disposable.
+A Bun workspace with two client flavors — React 19 and Angular 22 — against one NestJS/Fastify API on Bun. The Notes example is intentionally disposable.
+
+Start a project with [`lwapp`](cli/README.md):
+
+```bash
+npx lwapp my-app
+```
 
 ## Stack
 
@@ -243,27 +249,3 @@ curl.exe -s -i http://localhost:3000/api/unknown
 Expected: `200`, `200`, and JSON `404` responses for both `/api` and `/api/unknown`.
 
 When a browser is available, open <http://localhost:5173> with `bun run dev`, add a note, refresh, and confirm it remains. Repeat with `bun run dev:angular`. The API must run on port 3000. Run one dev server at a time to keep Angular on 5173; otherwise it prints its chosen port.
-
-## Copying this baseline
-
-To start a new project:
-
-1. Copy the repository without `node_modules/`, `client/dist/`, `client-angular/dist/`, `client-angular/.angular/`, `client/src/routeTree.gen.ts`, and `server/data/`.
-2. Run `bun install`.
-3. Rename the root package and the `client`/`client-angular`/`server` package names if desired.
-4. Replace the Notes example using the removal list above.
-5. Keep `server/src/db.ts`, `server/src/hosting.ts`, and `client/vite.config.ts`.
-6. Run `bun run check` and `bun run test` after the replacement.
-
-Never commit `server/data/`, either client's build output, the Angular CLI cache, or the generated route tree.
-
-### Keeping only the Angular flavor
-
-`client-angular/` does not stand alone: the app imports `@shared/*`, and the workspace entry, the scoped `vite` override for `@angular/build`, and the `--filter` scripts live in the root `package.json`. Copy the whole baseline first, then trim it:
-
-1. Delete `client/` and `cli/`, remove both from root `workspaces`, drop the React-only legs from root `package.json` (`dev`, `dev:client`, `routes`, the `bun run --filter client build` half of `build`, and the `bun run routes &&` prefixes in `typecheck`/`check`), and remove the stale `client/*` and `cli/*` ignore globs from `vite.config.ts`. Drop `templates:sync` and `test:cli`, and change `test` to `bun run --filter server test`; the scaffolder is no longer available in this trimmed app.
-2. Keep `angular.json` (`outputPath` with an empty `browser` name, dev-server port 5173, `proxy.conf.mjs`), `tsconfig.json`/`tsconfig.app.json` (TypeScript 6.0.x and the `@shared/*` path), and `eslint.config.mjs`.
-3. Rename the `projects` key and every `buildTarget` value in `angular.json` (the targets name `client-angular:build:...`; `ng serve` breaks if they still point at the old project), the package name, and the `app-` selector prefix if you want a different one. The `--filter` names in the commands below follow the new package name.
-4. Remove the generated CLI block and stale `client/` entries from `.gitignore`, and update this README to describe only the retained Angular app and its commands.
-5. Run `bun install` to regenerate `bun.lock` for the trimmed workspaces, then run `bun install --frozen-lockfile` and `bun run verify`.
-6. Replace the Notes page and service using the removal list above, then run `bun run --filter client-angular build` and `bun run --filter client-angular lint`.

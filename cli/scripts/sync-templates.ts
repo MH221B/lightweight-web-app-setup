@@ -160,7 +160,6 @@ const README_SENTINELS: Record<string, string> = {
   "Removing or renaming the Notes example": "Delete or replace these files together",
   Layout: "persistent SQLite files",
   Verification: "bun run verify",
-  "Copying this baseline": "To start a new project",
   "Schema variants": "shared/variants/effect/notes.contract.ts",
   "Database variants": "server/drizzle-pg/",
 };
@@ -322,7 +321,6 @@ Expected: \`200\`, \`200\`, and JSON \`404\` responses for both \`/api\` and \`/
 
 Manual browser checks (when a browser is available): open <http://localhost:5173> with \`bun run dev\`, add a note, refresh, and confirm the note remains. The API process must be running on port 3000.`,
     },
-    { heading: "Copying this baseline", body: null },
   ],
   angular: [
     {
@@ -489,15 +487,14 @@ Expected: \`200\`, \`200\`, and JSON \`404\` responses for both \`/api\` and \`/
 
 Manual browser checks (when a browser is available): open <http://localhost:5173> with \`bun run dev:angular\`, add a note, refresh, and confirm the note remains. The API process must be running on port 3000.`,
     },
-    { heading: "Copying this baseline", body: null },
   ],
 };
 
 const README_LINE_EDITS: Record<Flavor, Array<[find: string, replacement: string]>> = {
   react: [
     [
-      "A copyable Bun workspace with two client flavors — React 19 and Angular 22 — against one NestJS/Fastify API on Bun. The Notes example is intentionally disposable.",
-      "A copyable Bun workspace with a React 19 client against a NestJS/Fastify API on Bun. The Notes example is intentionally disposable.",
+      "A Bun workspace with two client flavors — React 19 and Angular 22 — against one NestJS/Fastify API on Bun. The Notes example is intentionally disposable.",
+      "A Bun workspace with a React 19 client against a NestJS/Fastify API on Bun. The Notes example is intentionally disposable.",
     ],
     [
       "- Node.js 24.15 or newer. The Angular CLI 22 requires `^22.22.3 || ^24.15.0 || >=26.0.0`; this repository is verified on 24.19.0 and CI pins that version.",
@@ -518,8 +515,8 @@ const README_LINE_EDITS: Record<Flavor, Array<[find: string, replacement: string
       "- Node.js 24.15 or newer. The Angular CLI 22 requires `^22.22.3 || ^24.15.0 || >=26.0.0`.",
     ],
     [
-      "A copyable Bun workspace with two client flavors — React 19 and Angular 22 — against one NestJS/Fastify API on Bun. The Notes example is intentionally disposable.",
-      "A copyable Bun workspace with an Angular 22 client against a NestJS/Fastify API on Bun. The Notes example is intentionally disposable.",
+      "A Bun workspace with two client flavors — React 19 and Angular 22 — against one NestJS/Fastify API on Bun. The Notes example is intentionally disposable.",
+      "A Bun workspace with an Angular 22 client against a NestJS/Fastify API on Bun. The Notes example is intentionally disposable.",
     ],
     [
       "`@client/...` resolves to `client/src/`, `@server/...` to `server/src/`, and `@shared/...` to `shared/`. Clients import the shared data layer, not the server application.",
@@ -775,6 +772,12 @@ async function editReadme(flavor: Flavor, root: string): Promise<void> {
   const file = join(root, "README.md");
   const where = `README.md (${flavor})`;
   let text = await readFile(file, "utf8");
+  text = replaceOnce(
+    text,
+    "Start a project with [`lwapp`](cli/README.md):\n\n```bash\nnpx lwapp my-app\n```\n\n",
+    "",
+    where,
+  );
   for (const section of README_SECTIONS[flavor]) {
     const sentinel = README_SENTINELS[section.heading];
     if (!sentinel) throw new SyncError(`${where}: no sentinel for section ${section.heading}`);
