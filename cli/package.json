@@ -1,6 +1,6 @@
 {
   "name": "lwapp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Scaffold a React or Angular Bun monorepo from the lightweight web app starter.",
   "license": "MIT",
   "repository": {

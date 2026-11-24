@@ -12,7 +12,7 @@
     },
     "cli": {
       "name": "lwapp",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "bin": {
         "lwapp": "dist/index.js",
       },
