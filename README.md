@@ -21,9 +21,9 @@ npx lwapp my-app
 
 The checked-in React and Angular clients use SCSS. `lwapp` defaults to SCSS and also offers `--tailwind` and `--both`.
 
-Client styling is configured in the client directory. See its package manifest and stylesheet entries for the selected setup.
-
 The `both` choice runs two pipelines: Tailwind in a plain `.css` entry and SCSS in its own entry. No Tailwind directive lives inside a `.scss` file, because the Tailwind Vite plugin ignores Sass files.
+
+Client styling is configured in the client directory. See its package manifest and stylesheet entries for the selected setup.
 
 ## Prerequisites
 

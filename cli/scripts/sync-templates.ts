@@ -512,7 +512,7 @@ const README_LINE_EDITS: Record<Flavor, Array<[find: string, replacement: string
       "The client imports the shared data layer, not the server application.",
     ],
     [
-      "The checked-in React and Angular clients use SCSS. `lwapp` defaults to SCSS and also offers `--tailwind` and `--both`.\n\n",
+      "The checked-in React and Angular clients use SCSS. `lwapp` defaults to SCSS and also offers `--tailwind` and `--both`.\n\nThe `both` choice runs two pipelines: Tailwind in a plain `.css` entry and SCSS in its own entry. No Tailwind directive lives inside a `.scss` file, because the Tailwind Vite plugin ignores Sass files.\n\n",
       "",
     ],
   ],
@@ -542,7 +542,7 @@ const README_LINE_EDITS: Record<Flavor, Array<[find: string, replacement: string
       "the root and the server stay on TypeScript 7",
     ],
     [
-      "The checked-in React and Angular clients use SCSS. `lwapp` defaults to SCSS and also offers `--tailwind` and `--both`.\n\n",
+      "The checked-in React and Angular clients use SCSS. `lwapp` defaults to SCSS and also offers `--tailwind` and `--both`.\n\nThe `both` choice runs two pipelines: Tailwind in a plain `.css` entry and SCSS in its own entry. No Tailwind directive lives inside a `.scss` file, because the Tailwind Vite plugin ignores Sass files.\n\n",
       "",
     ],
   ],
